@@ -1,0 +1,5 @@
+pytorch \
+torchvision \
+cudatoolkit=10.0 \
+h5py \
+-c pytorch
