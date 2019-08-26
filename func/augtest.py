@@ -2,26 +2,44 @@ from data import sets
 import torch
 from torch.utils.data import DataLoader
 from util.augmentation import augmentation_2d
+import matplotlib.pyplot as plt
 
 def main(args):
     ds = sets.HDF5Dataset(args.data, args.channels)
 
-    augmentation = augmentation_2d.Rotate90(ds.get_shape())
-
     class collate_fn:
-        def __init__(self, augmentation):
-            self.augmentation = augmentation
+        def __init__(self, shape):
+            self.transformations = [
+                augmentation_2d.Rotate90(shape, prob=0.5),
+                augmentation_2d.FlipX(shape, prob=0.5),
+                augmentation_2d.FlipY(shape, prob=0.5),
+                # augmentation_2d.RandomDeformation(shape, prob=0.5)
+            ]
 
         def __call__(self, samples):
             samples = torch.as_tensor(samples).cuda()
-            return self.augmentation(samples)
 
-    loader = DataLoader(
-        ds, batch_size=32, shuffle=True, 
+            for transform in self.transformations:
+                samples = transform(samples)            
+
+            return samples
+
+    loader_aug = DataLoader(
+        ds, batch_size=2, shuffle=False, 
         drop_last=False, num_workers=0,
-        collate_fn=collate_fn(augmentation)
+        collate_fn=collate_fn(ds.get_shape())
+    )
+    loader = DataLoader(
+        ds, batch_size=2, shuffle=False, 
+        drop_last=False, num_workers=0
     )
 
-    for i_batch, sample_batched in enumerate(loader):
-        print(
-            i_batch, sample_batched.size())
+    batch_aug, batch = next(iter(loader_aug)).cpu(), next(iter(loader)).cpu()
+    fig, axes = plt.subplots(2, 2)
+
+    axes[0][0].imshow(batch_aug[0][0])
+    axes[0][1].imshow(batch_aug[0][1])
+    axes[1][0].imshow(batch[0][0])
+    axes[1][1].imshow(batch[0][1])
+        
+    plt.show()
