@@ -10,10 +10,11 @@ def main(args):
     class collate_fn:
         def __init__(self, shape):
             self.transformations = [
-                augmentation_2d.Rotate90(shape, prob=0.5),
-                augmentation_2d.FlipX(shape, prob=0.5),
-                augmentation_2d.FlipY(shape, prob=0.5),
-                # augmentation_2d.RandomDeformation(shape, prob=0.5)
+                # augmentation_2d.Rotate90(shape, prob=0.5),
+                augmentation_2d.RotateRandom(shape),
+                augmentation_2d.FlipX(shape),
+                augmentation_2d.FlipY(shape),
+                augmentation_2d.RandomDeformation(shape, sigma=0.01)
             ]
 
         def __call__(self, samples):
@@ -27,7 +28,7 @@ def main(args):
     loader_aug = DataLoader(
         ds, batch_size=2, shuffle=False, 
         drop_last=False, num_workers=0,
-        collate_fn=collate_fn(ds.get_shape())
+        collate_fn=collate_fn(ds.get_shape()[1:])
     )
     loader = DataLoader(
         ds, batch_size=2, shuffle=False, 

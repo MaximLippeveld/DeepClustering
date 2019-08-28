@@ -20,7 +20,7 @@ class HDF5Dataset(Dataset):
         return self.get_shape()[0]
 
     def get_shape(self):
-        return self.handle[self.channels[0]]["images"].shape
+        return numpy.array(self.handle[self.channels[0]]["images"].shape)
 
     def __getitem__(self, idx):
         im = numpy.array([self.handle[channel]["images"][idx] for channel in self.channels], dtype=numpy.float32)
