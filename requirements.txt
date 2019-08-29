@@ -2,4 +2,5 @@ pytorch \
 torchvision \
 cudatoolkit=10.0 \
 h5py \
+tqdm \
 -c pytorch
