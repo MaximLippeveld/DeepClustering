@@ -16,15 +16,16 @@ class Encoder(nn.Module):
             embedding_shape {int} -- Embedding dimension
             dropout {float} -- Set the drop probability (default: no drops)
         """
-        super(NoisyEncoder, self).__init__()
+        super(Encoder, self).__init__()
 
+        self.layers = nn.ModuleList()
+        
         shapes = [
             input_shape,
             500, 500, 2000,
             embedding_shape
         ]
 
-        self.layers = []
         for i, in_shape in enumerate(shapes[:-1]):
             self.layers.append(nn.Linear(in_shape, shapes[i+1]))
 
@@ -46,7 +47,7 @@ class Decoder(nn.Module):
             reconstruction_shape
         ]
 
-        self.layers = []
+        self.layers = nn.ModuleList()
         for i, in_shape in enumerate(shapes[:-1]):
             self.layers.append(nn.Linear(in_shape, shapes[i+1]))
 
@@ -61,15 +62,24 @@ class DAE(nn.Module):
         """Denoising auto-encoder.
         
         Arguments:
-            input_shape {int} -- Flattened input shape
+            input_shape {int} -- Input shape
             embedding_shape {int} -- Embedding dimension
         
         Keyword Arguments:
             dropout {float} -- Probability of dropping random element (default: {0.5})
         """
+        super(DAE, self).__init__()
+        
+        if type(input_shape) is tuple:
+            self.flatten = nn.Flatten()
+            input_shape = input_shape[0]*input_shape[1]
+        
         self.encoder = Encoder(input_shape, embedding_shape, dropout)
         self.decoder = Decoder(embedding_shape, input_shape)
 
     def forward(self, x):
+        if len(x.shape) > 2:
+            x = self.flatten(x)
+
         embedding = self.encoder(x)
         return self.decoder(embedding)

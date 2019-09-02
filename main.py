@@ -1,12 +1,14 @@
 import argparse
 from func import augtest, fit_dae
 import os
+import importlib
+from pathlib import Path
 
 def parse_file_arg(arg):
-    if os.path.exists(arg):
+    if arg == "fmnist":
         return arg
-
-    argparse.ArgumentError(arg, "The file does not exist.")
+    else:
+        return Path(arg)
 
 def main():
     """
@@ -16,9 +18,9 @@ def main():
     parent_parser = argparse.ArgumentParser(add_help=False)
 
     group_data = parent_parser.add_argument_group(title="data", description="Arguments related to data input.")
-    group_data.add_argument("--root", "-r", help="Directory prepended to any path input. (Can be path to dir structure shared accross environments.)")
-    group_data.add_argument("--data", "-d", help="HDF5-file containing input images.", required=True, type=parse_file_arg)
-    group_data.add_argument("--channels", "-c", nargs="*", type=int, help="Channel numbers to be used.", required=True)
+    group_data.add_argument("--root", "-r", help="Directory prepended to any path input. (Can be path to dir structure shared accross environments.)", type=parse_file_arg)
+    group_data.add_argument("--data", "-d", help="File containing input images or 'fmnist'.", required=True, type=parse_file_arg)
+    group_data.add_argument("--channels", "-c", nargs="*", type=int, help="Channel numbers to be used (only if data is HDF5).")
     group_data.add_argument("--batch-size", "-b", type=int, help="Batch size.", default=256)
 
     parser = argparse.ArgumentParser(prog="uncertainty-in-dl")
@@ -36,6 +38,22 @@ def main():
     subparser_dae.set_defaults(func=fit_dae.main)
     
     args = parser.parse_args()
+
+    # specify argument dependencies
+    if ".hdf5" in args.data:
+        if not hasattr(args, "channels"):
+            raise argparse.ArgumentError("Channels is required.")
+
+    # process file arguments
+    if type(args.data) is Path:
+        if not args.data.exists() and args.root.exists():
+            if (args.data / args.root).exists():
+                args.data /= args.root
+            else:
+                raise argparse.ArgumentError("Concatentation of root and data does not exist.")
+        else:
+            raise argparse.ArgumentError("Data arg does not exist and root does not exist.")
+
     args.func(args)
 
 

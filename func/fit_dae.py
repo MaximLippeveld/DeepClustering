@@ -2,32 +2,45 @@ import data
 import model.dae
 import torch.nn.functional as F
 import torch.optim
-import tqdm
+from tqdm import tqdm
+from torchvision import datasets, transforms
+from pathlib import Path
+from util.augmentation.augmentation_2d import *
+from torch.utils.data import DataLoader
 
 def main(args):
 
     # prepare data
-    ds = sets.HDF5Dataset(args.data, args.channels)
-    shape = ds.get_shape()[1:]
+    if type(args.data) is Path:
+        ds = sets.HDF5Dataset(args.data, args.channels)
+        shape = ds.get_shape()[1:]
+        augs = [ToTensor()]
+    else:
+        ds = datasets.FashionMNIST("data/datasets/", train=True, download=True).data
+        shape = tuple(ds.shape[1:])
+        augs = [Stack()]
 
-    augmenter = Compose([
-        ToTensor(),
+    augs += [
         ToFloatTensor(),
         FlipX(shape),
         FlipY(shape),
-        RandomDeformation(shape),
+        RandomDeformation(shape, sampling_interval=12),
         RotateRandom(shape)   
-    ])
+    ]
+    augmenter = transforms.Compose(augs)
 
     loader_aug = DataLoader(
         ds, batch_size=args.batch_size, shuffle=False, 
-        drop_last=False, num_workers=5,
+        drop_last=False, num_workers=0,
         collate_fn=augmenter
     )
 
     # get model, optimizer, loss
     dae = model.dae.DAE(shape, 10)
-    opt = torch.optim.Adam(dae.params())
+
+    dae.cuda()
+
+    opt = torch.optim.Adam(dae.parameters())
 
     # training loop
     for epoch in tqdm(range(args.epochs)):
