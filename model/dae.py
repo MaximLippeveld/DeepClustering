@@ -34,6 +34,12 @@ class Encoder(nn.Module):
                 self.layers.append(nn.Dropout(p=dropout))
 
 
+    def forward(self, x):
+        for layer in self.layers:
+            x = layer(x)
+        return x
+
+
 class Decoder(nn.Module):
     """Regular decoder
     """
@@ -54,6 +60,10 @@ class Decoder(nn.Module):
             if i != (len(shapes)-1):
                 self.layers.append(nn.ReLU())
 
+    def forward(self, x):
+        for layer in self.layers:
+            x = layer(x)
+        return x
 
 
 class DAE(nn.Module):

@@ -17,6 +17,9 @@ def main():
 
     parent_parser = argparse.ArgumentParser(add_help=False)
 
+    group_meta = parent_parser.add_argument_group(title="meta", description="Arguments related to running the program")
+    group_meta.add_argument("--cuda", "-u", action="store_true", help="Use cuda")
+
     group_data = parent_parser.add_argument_group(title="data", description="Arguments related to data input.")
     group_data.add_argument("--root", "-r", help="Directory prepended to any path input. (Can be path to dir structure shared accross environments.)", type=parse_file_arg)
     group_data.add_argument("--data", "-d", help="File containing input images or 'fmnist'.", required=True, type=parse_file_arg)
@@ -38,6 +41,14 @@ def main():
     subparser_dae.set_defaults(func=fit_dae.main)
     
     args = parser.parse_args()
+
+    # cuda specific setup
+    if args.cuda:
+        from torch.multiprocessing import set_start_method
+        try:
+            set_start_method('spawn')
+        except RuntimeError:
+            pass
 
     # specify argument dependencies
     if ".hdf5" in args.data:
