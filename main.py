@@ -1,5 +1,5 @@
 import argparse
-from func import augtest, fit_dae
+from func import augtest, fit_dae, fit_cae
 import os
 import importlib
 from pathlib import Path
@@ -26,7 +26,7 @@ def main():
     group_data.add_argument("--channels", "-c", nargs="*", type=int, help="Channel numbers to be used (only if data is HDF5).")
     group_data.add_argument("--batch-size", "-b", type=int, help="Batch size.", default=256)
 
-    parser = argparse.ArgumentParser(prog="uncertainty-in-dl")
+    parser = argparse.ArgumentParser(prog="Deep Clustering")
     subparsers = parser.add_subparsers()
 
     subparser_augtest = subparsers.add_parser(name="augtest", parents=[parent_parser])
@@ -39,6 +39,9 @@ def main():
 
     subparser_dae = subparsers.add_parser(name="DAE", parents=[parser_model])
     subparser_dae.set_defaults(func=fit_dae.main)
+    
+    subparser_cae = subparsers.add_parser(name="CAE", parents=[parser_model])
+    subparser_cae.set_defaults(func=fit_cae.main)
     
     args = parser.parse_args()
 
