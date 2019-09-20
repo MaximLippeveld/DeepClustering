@@ -3,6 +3,7 @@ from func import augtest, fit_dae, fit_cae
 import os
 import importlib
 from pathlib import Path
+import shutil
 
 def parse_file_arg(arg):
     if arg == "fmnist":
@@ -23,6 +24,8 @@ def main():
     group_data = parent_parser.add_argument_group(title="data", description="Arguments related to data input.")
     group_data.add_argument("--root", "-r", help="Directory prepended to any path input. (Can be path to dir structure shared accross environments.)", type=parse_file_arg)
     group_data.add_argument("--data", "-d", help="File containing input images or 'fmnist'.", required=True, type=parse_file_arg)
+    group_data.add_argument("--output", "-o", help="Directory for storing output.", default="tmp", type=Path)
+    group_data.add_argument("--rm", help="Remove output directory if exists.", action="store_true", default=False)
     group_data.add_argument("--channels", "-c", nargs="*", type=int, help="Channel numbers to be used (only if data is HDF5).")
     group_data.add_argument("--batch-size", "-b", type=int, help="Batch size.", default=256)
 
@@ -67,6 +70,13 @@ def main():
                 raise argparse.ArgumentError("Concatentation of root and data does not exist.")
         else:
             raise argparse.ArgumentError("Data arg does not exist and root does not exist.")
+    
+    # process outputdir arg
+    if args.output.exists():
+        if args.output == Path("tmp") or args.rm:
+            shutil.rmtree(args.output)
+
+    args.output.mkdir() 
 
     args.func(args)
 

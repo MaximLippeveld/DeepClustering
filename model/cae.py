@@ -35,7 +35,7 @@ class ConvolutionalEncoder(nn.Module):
             nn.LeakyReLU(),
             nn.Flatten(),
             nn.Linear(embedding_input_shape, embedding_shape),
-            nn.Tanh()
+            nn.Sigmoid()
         ])
 
 
@@ -61,13 +61,13 @@ class ConvolutionalDecoder(nn.Module):
         )
         
         self.linear = nn.Linear(input_shape, numpy.prod(self.shape))
-        self.tanh = nn.Tanh()
+        self.nonlinearity = nn.Sigmoid()
         self.layers = nn.ModuleList()
 
         self.layers.extend([
-            nn.ConvTranspose2d(filters[0], filters[1], stride=2, kernel_size=5, padding=2),
+            nn.ConvTranspose2d(filters[0], filters[1], stride=1, kernel_size=8),
             nn.LeakyReLU(),
-            nn.ConvTranspose2d(filters[1], reconstruction_shape[0], stride=2, kernel_size=5, padding=2),
+            nn.ConvTranspose2d(filters[1], reconstruction_shape[0], stride=1, kernel_size=15),
             nn.LeakyReLU()
         ])
 
@@ -75,7 +75,7 @@ class ConvolutionalDecoder(nn.Module):
     def forward(self, x):
 
         x = self.linear(x)
-        x = self.tanh(x)
+        x = self.nonlinearity(x)
         x = torch.reshape(x, [-1] + list(self.shape))
 
         for layer in self.layers:
