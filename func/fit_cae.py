@@ -26,11 +26,10 @@ def main(args):
         channel_shape = ds.shape[1:]
         ds = torch.unsqueeze(ds, 1)
         img_shape = ds.shape[1:]
-        pre_augs = [Stack(cuda=args.cuda), data.transformers.MinMax()]
+        pre_augs = [Stack(cuda=args.cuda), ToFloatTensor(cuda=args.cuda), data.transformers.MinMax()]
         post_augs = []
 
     augs = pre_augs + [
-        ToFloatTensor(cuda=args.cuda),
         FlipX(channel_shape, cuda=args.cuda),
         FlipY(channel_shape, cuda=args.cuda),
         RandomDeformation(channel_shape, sampling_interval=7, cuda=args.cuda),
@@ -96,6 +95,8 @@ def main(args):
         running_loss.reset()
         for k, v in running_gradients.items():
             v.reset()
+
+    torch.save(cae.state_dict(), args.output / "model.pth")
 
     writer.close()
     
