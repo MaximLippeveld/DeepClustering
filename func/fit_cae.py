@@ -47,7 +47,7 @@ def main(args):
     writer = SummaryWriter(args.output / "tb")
 
     # get model, optimizer, loss
-    cae = model.cae.ConvolutionalAutoEncoder(img_shape, 10)
+    cae = model.cae.ConvolutionalAutoEncoder(img_shape, args.embedding_size)
     if args.cuda:
         cae.cuda()
     writer.add_graph(cae, next(iter(loader_aug)))
