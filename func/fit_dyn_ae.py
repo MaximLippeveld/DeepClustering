@@ -77,10 +77,8 @@ def main(args):
 
     # hyperparams
     k = 0.3*args.clusters
-    # delta_k = 0.3*k
-    delta_k = 0.001
-    # beta1 = k/args.clusters
-    beta1 = 0.095
+    beta1 = k/args.clusters
+    # beta1 = 0.095
     beta2 = beta1/2
     alpha = 1.
     
@@ -88,7 +86,7 @@ def main(args):
     writer = SummaryWriter(args.output / "tb")
     
     writer.add_text("Hyperparams", str({
-        "k": k, "delta_k": delta_k, "beta1": beta1,
+        "k": k, "beta1": beta1,
         "beta2": beta2, "alpha": alpha}))
 
     # load data
@@ -159,6 +157,8 @@ def main(args):
         while not stop and epoch < args.epochs:
             logging.info("Epoch: %d", epoch)
 
+            # TODO move var initialization here
+
             for i, (batch, target) in enumerate(loader_aug):
                 opt.zero_grad()
 
@@ -198,11 +198,13 @@ def main(args):
                     centroids = mb_kmeans.cluster_centers_
                     reconstructed_centroids = m.decoder(torch.from_numpy(mb_kmeans.cluster_centers_).cuda()).cpu()
 
-                    beta1 -= delta_k/args.clusters
-                    beta2 -= delta_k/args.clusters
+                    beta1 -= (0.3*k)/args.clusters
+                    beta2 -= (0.3*k)/args.clusters
+                    k -= (0.3*k)
 
                     writer.add_scalar("hyperparams/beta1", beta1, global_step)
                     writer.add_scalar("hyperparams/beta2", beta2, global_step)
+                    writer.add_scalar("hyperparams/k", k, global_step)
 
                 if nb_conf/args.batch_size < args.tolerance:
                     logging.info("Stopping after %d epochs" % epoch)
