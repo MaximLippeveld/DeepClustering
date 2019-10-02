@@ -18,6 +18,18 @@ import logging
 
 from matplotlib import pyplot as plt
 import seaborn as sns
+import umap
+
+
+def inspect_clustering(batch, centroids, cluster_assignments):
+    embedder = umap.UMAP().fit(batch)
+    embedded_centroids = embedder.transform(centroids)
+
+    fig, ax = plt.subplots()
+    ax.scatter(embedder.embedding_[:, 0], embedder.embedding_[:, 1], s=5, c=cluster_assignments, cmap="tab10")
+    ax.scatter(embedded_centroids[:, 0], embedded_centroids[:, 1], s=30, c=np.arange(centroids.shape[0]), cmap="tab10")
+
+    return fig
 
 
 def dynamic_reconstruction_loss(x, z, x_hat, c, s, centroids, reconstructed_centroids, model):
@@ -48,13 +60,13 @@ def h(n, q_ij):
     else:
         return np.sort(q_ij, axis=1)[:, -n]
 
-def is_conflicted(q_ij, beta1, beta2):
+def is_not_conflicted(q_ij, beta1, beta2):
     hi_1 = h(1, q_ij)
     hi_2 = h(2, q_ij)
 
     return np.logical_and(hi_1 >= beta1, (hi_1 - hi_2) >= beta2)
 
-def is_conflicted_clustering(q_ij, beta1, beta2):
+def is_not_conflicted_clustering(q_ij, beta1, beta2):
     hi_1 = h(1, q_ij)
     hi_2 = h(2, q_ij)
     hi_3 = h(3, q_ij)
@@ -65,14 +77,20 @@ def main(args):
 
     # hyperparams
     k = 0.3*args.clusters
-    delta_k = 0.3*k
-    beta1 = k/args.clusters
+    # delta_k = 0.3*k
+    delta_k = 0.001
+    # beta1 = k/args.clusters
+    beta1 = 0.095
     beta2 = beta1/2
     alpha = 1.
     
     # tensorboard writer
     writer = SummaryWriter(args.output / "tb")
     
+    writer.add_text("Hyperparams", str({
+        "k": k, "delta_k": delta_k, "beta1": beta1,
+        "beta2": beta2, "alpha": alpha}))
+
     # load data
     class unsqueeze:
         def __init__(self, axis=0):
@@ -125,7 +143,7 @@ def main(args):
     loss = dynamic_reconstruction_loss
 
     # initalize optimizer
-    opt = torch.optim.Adam(m.parameters())
+    opt = torch.optim.SGD(m.parameters(), lr=0.001, momentum=0.9)
 
     n_conf_prev = args.batch_size
     stop = False
@@ -133,12 +151,17 @@ def main(args):
     global_step = 0
     it = iter(loader_aug)
 
+    writer.add_scalar("hyperparams/beta1", beta1, global_step)
+    writer.add_scalar("hyperparams/beta2", beta2, global_step)
+    
     m.train()
     with autograd.detect_anomaly():
         while not stop and epoch < args.epochs:
             logging.info("Epoch: %d", epoch)
 
             for i, (batch, target) in enumerate(loader_aug):
+                opt.zero_grad()
+
                 logging.info("Batch %d" % i)
                 if global_step > 0:
                     n_conf_prev = nb_conf
@@ -146,7 +169,8 @@ def main(args):
                 embedding = m.encoder(batch)
                 reconstruction = m.decoder(embedding)
 
-                q_ij = q(embedding.cpu().detach().numpy(), mb_kmeans.cluster_centers_, alpha)
+                embedding_ = embedding.cpu().detach().numpy()
+                q_ij = q(embedding_, mb_kmeans.cluster_centers_, alpha)
                 cluster_assignments = np.argmax(q_ij, axis=1)
 
                 writer.add_histogram("q_ij_hist", q_ij, global_step)
@@ -158,27 +182,34 @@ def main(args):
                 sns.countplot(cluster_assignments, ax=ax)
                 writer.add_figure("Assignments", fig, global_step)
 
-                writer.add_scalar("ACC", util.metrics.acc(target.numpy(), cluster_assignments))
-                writer.add_scalar("NMI", util.metrics.nmi(target.numpy(), cluster_assignments, method="arithmetic"))
+                clustering_fig = inspect_clustering(embedding_, mb_kmeans.cluster_centers_, cluster_assignments)
+                writer.add_figure("Clustering", clustering_fig, global_step)
+                plt.show()
 
-                c_i = is_conflicted(q_ij, beta1, beta2)
-                nb_conf = np.sum(c_i)
+                writer.add_scalar("ACC", util.metrics.acc(target.numpy(), cluster_assignments), global_step)
+                writer.add_scalar("NMI", util.metrics.nmi(target.numpy(), cluster_assignments, average_method="arithmetic"), global_step)
+
+                c_i = is_not_conflicted(q_ij, beta1, beta2)
+                nb_conf = np.sum(~c_i)
                 writer.add_scalar("nb_conf", nb_conf, global_step)
 
                 if nb_conf >= n_conf_prev:
-                    mb_kmeans = mb_kmeans.partial_fit(embedding.detach().cpu().numpy()[c_i])
+                    mb_kmeans = mb_kmeans.partial_fit(embedding_)
                     centroids = mb_kmeans.cluster_centers_
                     reconstructed_centroids = m.decoder(torch.from_numpy(mb_kmeans.cluster_centers_).cuda()).cpu()
 
                     beta1 -= delta_k/args.clusters
                     beta2 -= delta_k/args.clusters
 
+                    writer.add_scalar("hyperparams/beta1", beta1, global_step)
+                    writer.add_scalar("hyperparams/beta2", beta2, global_step)
+
                 if nb_conf/args.batch_size < args.tolerance:
                     logging.info("Stopping after %d epochs" % epoch)
                     stop = True
                     break
 
-                s_i = is_conflicted_clustering(q_ij, beta1, beta2)
+                s_i = is_not_conflicted_clustering(q_ij, beta1, beta2)
                 l = loss(
                     batch.cpu(), embedding.cpu(), reconstruction.cpu(), torch.from_numpy(c_i),
                     torch.from_numpy(s_i), torch.from_numpy(mb_kmeans.cluster_centers_), 
@@ -186,14 +217,12 @@ def main(args):
                 )
 
                 writer.add_scalar("loss", l, global_step=global_step)
+                
                 l.backward(retain_graph=True)
 
                 opt.step()
-
-                # writer.add_embedding(mb_kmeans.cluster_centers_, global_step=global_step)
-                # writer.add_embedding(embedding, global_step=global_step)
-
                 global_step += 1
+
             epoch += 1
 
     writer.close()
