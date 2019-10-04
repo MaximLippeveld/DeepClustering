@@ -11,6 +11,7 @@ from torch.utils.tensorboard import SummaryWriter
 import util.metrics
 import logging
 logging.basicConfig(level=logging.INFO)
+from math import ceil
 
 def main(args):
 
@@ -62,12 +63,32 @@ def main(args):
         for n,p in cae.named_parameters() if p.requires_grad
     }
 
+    global_step = 0
+    embeddings_to_save_per_epoch = 5000
+    steps_per_epoch = ceil(len(ds)/args.batch_size)
+    embeddings_to_save_per_step = int(embeddings_to_save_per_epoch/steps_per_epoch)
+
     for epoch in tqdm(range(args.epochs)):
         # iterate over data
+
+        embeddings = torch.empty((embeddings_to_save_per_epoch, args.embedding_size), dtype=np.float)
+        label_imgs = torch.empty(tuple([embeddings_to_save_per_epoch] + list(img_shape)), dtype=np.float)
         for b_i, batch in enumerate(tqdm(loader_aug, leave=False)):
+            global_step += 1
             opt.zero_grad()
 
-            target = cae(batch)
+            embedding = cae.encoder(batch)
+
+            embeddings[
+                b_i*embeddings_to_save_per_step:
+                (b_i+1)*embeddings_to_save_per_step
+            ] = embedding.detach().cpu()[:embeddings_to_save_per_step]
+            label_imgs[
+                b_i*embeddings_to_save_per_step:
+                (b_i+1)*embeddings_to_save_per_step
+            ] = batch.detach().cpu()[:embeddings_to_save_per_step]
+
+            target = cae.decoder(embedding)
             loss = F.mse_loss(batch, target, reduction="mean")
             loss.backward()
 
@@ -78,19 +99,21 @@ def main(args):
 
                 if p.requires_grad:
                     running_gradients[n].update(p.grad)
-
+            
             opt.step()
 
         # reporting 
-        input_grid = utils.make_grid(batch[:10], nrow=2, normalize=True)
-        output_grid = utils.make_grid(target[:10], nrow=2, normalize=True)
+        input_grid = utils.make_grid(batch[:15], nrow=3, normalize=True)
+        output_grid = utils.make_grid(target[:15], nrow=3, normalize=True)
 
-        writer.add_image("training/input", input_grid, global_step=epoch)
-        writer.add_image("training/output", output_grid, global_step=epoch)
-        writer.add_scalar("training/loss", running_loss.avg, global_step=epoch)
+        writer.add_embedding(embeddings, label_img=label_imgs, global_step=global_step)
+        
+        writer.add_image("training/input", input_grid, global_step=global_step)
+        writer.add_image("training/output", output_grid, global_step=global_step)
+        writer.add_scalar("training/loss", running_loss.avg, global_step=global_step)
         
         for n, rg in running_gradients.items():
-            writer.add_histogram("gradients/%s" % n, rg.avg, global_step=epoch)
+            writer.add_histogram("gradients/%s" % n, rg.avg, global_step=global_step)
 
         running_loss.reset()
         for k, v in running_gradients.items():

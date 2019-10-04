@@ -39,7 +39,6 @@ def main():
     group_model_fit.add_argument("--epochs", "-e", help="Number of epochs", default=100, type=int)
     group_model_fit.add_argument("--batch-size", "-b", type=int, help="Batch size.", default=256)
     group_model_fit.add_argument("--embedding-size", "-s", type=int, help="Embedding size.", default=10)
-    group_model_fit.add_argument("--tolerance", "-t", default=0.0001, type=float)
 
     subparser_dae = subparsers.add_parser(name="DAE", parents=[parser_model])
     subparser_dae.set_defaults(func=fit_dae.main)
@@ -52,6 +51,7 @@ def main():
     group_fixed_fit = parser_fixed.add_argument_group(title="fit", description="Arguments related to model fitting with fixed clusters.")
     group_fixed_fit.add_argument("--clusters", "-N", help="Number of clusters", required=True, type=int)
     group_fixed_fit.add_argument("--pretrained-model", "-p", required=True, type=parse_file_arg)
+    group_fixed_fit.add_argument("--tolerance", "-t", default=0.0001, type=float)
     
     subparser_cae = subparsers.add_parser(name="dynAE", parents=[parser_fixed])
     subparser_cae.set_defaults(func=fit_dyn_ae.main)
