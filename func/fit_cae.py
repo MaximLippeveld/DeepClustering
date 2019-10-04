@@ -12,6 +12,26 @@ import util.metrics
 import logging
 logging.basicConfig(level=logging.INFO)
 from math import ceil
+import time
+import multiprocessing
+
+def epoch_reporting(writer, queue):
+    while True:
+        item = queue.get()
+        global_step = item["global_step"]
+        
+        input_grid = utils.make_grid(item["input_grid"], nrow=3, normalize=True)
+        output_grid = utils.make_grid(item["output_grid"], nrow=3, normalize=True)
+
+        writer.add_embedding(item["embeddings"], label_img=item["label_imgs"], global_step=global_step)
+        
+        writer.add_image("training/input", input_grid, global_step=global_step)
+        writer.add_image("training/output", output_grid, global_step=global_step)
+        writer.add_scalar("training/loss", item["running_loss_avg"], global_step=global_step)
+        
+        for n, avg in item["running_gradients_avgs"].items():
+            writer.add_histogram("gradients/%s" % n, avg, global_step=global_step)
+
 
 def main(args):
 
@@ -68,6 +88,12 @@ def main(args):
     steps_per_epoch = ceil(len(ds)/args.batch_size)
     embeddings_to_save_per_step = int(embeddings_to_save_per_epoch/steps_per_epoch)
 
+    manager = multiprocessing.Manager()
+    queue = manager.Queue()
+    consumer = multiprocessing.Process(target=epoch_reporting, args=(writer, queue))
+    consumer.daemon = True
+    consumer.start()
+
     for epoch in tqdm(range(args.epochs)):
         # iterate over data
 
@@ -91,7 +117,6 @@ def main(args):
             target = cae.decoder(embedding)
             loss = F.mse_loss(batch, target, reduction="mean")
             loss.backward()
-
             running_loss.update(loss)
             for n, p in cae.named_parameters():
                 if epoch==0 and b_i==0:
@@ -102,19 +127,21 @@ def main(args):
             
             opt.step()
 
-        # reporting 
-        input_grid = utils.make_grid(batch[:15], nrow=3, normalize=True)
-        output_grid = utils.make_grid(target[:15], nrow=3, normalize=True)
-
-        writer.add_embedding(embeddings, label_img=label_imgs, global_step=global_step)
-        
-        writer.add_image("training/input", input_grid, global_step=global_step)
-        writer.add_image("training/output", output_grid, global_step=global_step)
-        writer.add_scalar("training/loss", running_loss.avg, global_step=global_step)
-        
+        # reporting
+        item = {
+            "input_grid": batch.detach().cpu()[:15],
+            "output_grid": embedding.detach().cpu()[:15],
+            "embeddings": embeddings,
+            "label_imgs": label_imgs,
+            "running_loss_avg": running_loss.avg.cpu(),
+            "running_gradients_avgs": {},
+            "global_step": global_step
+        }
         for n, rg in running_gradients.items():
-            writer.add_histogram("gradients/%s" % n, rg.avg, global_step=global_step)
+            item["running_gradients_avgs"][n] = rg.avg.cpu()
 
+        queue.put(item)
+        
         running_loss.reset()
         for k, v in running_gradients.items():
             v.reset()
