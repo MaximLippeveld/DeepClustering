@@ -1,7 +1,0 @@
-pytorch \
-torchvision \
-cudatoolkit=10.0 \
-h5py \
-tqdm \
-umap-learn \
--c pytorch
