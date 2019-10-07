@@ -81,12 +81,14 @@ def plot_stoch_embedding(stoch_embedding, embedding_size):
 def main(args):
     logging.getLogger().setLevel(logging.DEBUG)
 
+    device = torch.device("cuda") if args.cuda else torch.device("cpu")
+
     # prepare data
     if isinstance(args.data, Path):
         ds = data.sets.HDF5Dataset(args.data, args.channels)
         img_shape = ds.get_shape()[1:]
         channel_shape = ds.get_shape()[2:]
-        pre_augs = [ToTensor(cuda=args.cuda)]
+        pre_augs = [ToTensor(cuda=args.cuda), ToFloatTensor(cuda=args.cuda), data.transformers.MinMax()]
         post_augs = []
     else:
         ds = datasets.FashionMNIST("data/datasets/", train=True, download=True).data
@@ -161,7 +163,7 @@ def main(args):
             global_step += 1
             opt.zero_grad()
 
-            stoch_embedding = torch.empty((args.n_stochastic, args.batch_size, args.embedding_size), dtype=batch.dtype)
+            stoch_embedding = torch.empty((args.n_stochastic, args.batch_size, args.embedding_size), dtype=batch.dtype).to(device)
             for i in range(args.n_stochastic):
                 tmp = cae.encoder(batch)
                 stoch_embedding[i] = tmp
