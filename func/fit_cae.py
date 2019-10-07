@@ -143,7 +143,7 @@ def main(args):
         # reporting
         item = {
             "input_grid": batch.clone().detach().cpu()[:15],
-            "output_grid": embedding.clone().detach().cpu()[:15],
+            "output_grid": target.clone().detach().cpu()[:15],
             "embeddings": embeddings.clone(),
             "label_imgs": label_imgs.clone(),
             "running_loss_avg": running_loss.avg.clone().cpu(),
