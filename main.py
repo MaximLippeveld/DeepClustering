@@ -1,6 +1,7 @@
 import argparse
 from func import augtest, fit_dae, fit_cae
 from func import dyn_ae_clustering
+from func import mc_dropout_cae
 import os
 import importlib
 from pathlib import Path
@@ -26,6 +27,7 @@ def main():
 
     group_meta = parent_parser.add_argument_group(title="meta", description="Arguments related to running the program")
     group_meta.add_argument("--cuda", "-u", action="store_true", help="Use cuda")
+    group_meta.add_argument("--batch-report-frequency", default=50, type=int)
 
     group_data = parent_parser.add_argument_group(title="data", description="Arguments related to data input.")
     group_data.add_argument("--root", "-r", help="Directory prepended to any path input. (Can be path to dir structure shared accross environments.)", type=parse_file_arg)
@@ -43,11 +45,17 @@ def main():
 
     subparser_dae = subparsers.add_parser(name="DAE", parents=[parser_model])
     subparser_dae.set_defaults(func=fit_dae.main)
-    
-    subparser_cae = subparsers.add_parser(name="CAE", parents=[parser_model])
-    group_cae = subparser_cae.add_argument_group(title="CAE specific")
+
+    parser_cae = argparse.ArgumentParser(parents=[parser_model], add_help=False)
+    group_cae = parser_cae.add_argument_group(title="CAE specific")
     group_cae.add_argument("--dropout", "-p", default=0.0, type=float)
+
+    subparser_cae = subparsers.add_parser(name="CAE", parents=[parser_cae])
     subparser_cae.set_defaults(func=fit_cae.main)
+    
+    subparser_mc_cae = subparsers.add_parser(name="MC_CAE", parents=[parser_cae])
+    subparser_mc_cae.add_argument("--n-stochastic", "-n", default=10, type=int)
+    subparser_mc_cae.set_defaults(func=mc_dropout_cae.main)
         
     subparser_dynAE = subparsers.add_parser(name="dynAE", parents=[parser_model])
     group_dynAE = subparser_dynAE.add_argument_group(title="dynAE specific", description="Arguments related to model fitting with fixed clusters.")
@@ -58,16 +66,14 @@ def main():
     
     args = parser.parse_args()
 
-    # cuda specific setup
-    if args.cuda:
-        from torch.multiprocessing import set_start_method
-        try:
-            set_start_method('spawn')
-        except RuntimeError:
-            pass
+    from torch.multiprocessing import set_start_method
+    try:
+        set_start_method('spawn', True)
+    except RuntimeError:
+        pass
 
     # specify argument dependencies
-    if ".hdf5" in args.data:
+    if args.data.suffix in [".h5", ".hdf5"]:
         if not hasattr(args, "channels"):
             raise ValueError("Channels is required.")
 

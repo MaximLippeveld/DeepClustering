@@ -13,8 +13,10 @@ import logging
 from math import ceil
 import time
 from torch import multiprocessing
-
-multiprocessing.set_start_method('spawn', True)
+import pandas
+import pandas.plotting
+from matplotlib import pyplot as plt
+import seaborn
 
 def epoch_reporting(output, queue, event):
     logger = logging.getLogger("epoch_reporting")
@@ -47,13 +49,41 @@ def epoch_reporting(output, queue, event):
 
     writer.close()
 
+def batch_reporting(output, queue, event, embedding_size):
+    
+    # tensorboard writer
+    writer = SummaryWriter(output / "tb")
+
+    while not event.is_set():
+        item = queue.get()
+        global_step = item["global_step"]
+
+        try: 
+            fig = plot_stoch_embedding(item["stoch_embedding"], embedding_size)
+            writer.add_figure("stoch_embedding", fig, global_step=global_step)
+        except np.linalg.LinAlgError:
+            pass
+
+    writer.close()
+
+
+def plot_stoch_embedding(stoch_embedding, embedding_size):
+    n = 3
+    fig, axes = plt.subplots(n, embedding_size)
+    for i, row in enumerate(axes):
+        data = stoch_embedding[:, i, :]
+        for j, ax in enumerate(row):
+            seaborn.distplot(data[:, j], ax=ax)
+
+    return fig
+
 
 def main(args):
     logging.getLogger().setLevel(logging.DEBUG)
 
     # prepare data
     if isinstance(args.data, Path):
-        ds = sets.HDF5Dataset(args.data, args.channels)
+        ds = data.sets.HDF5Dataset(args.data, args.channels)
         img_shape = ds.get_shape()[1:]
         channel_shape = ds.get_shape()[2:]
         pre_augs = [ToTensor(cuda=args.cuda)]
@@ -79,6 +109,9 @@ def main(args):
         drop_last=False, num_workers=0,
         collate_fn=augmenter
     )
+    
+    # tensorboard writer
+    writer = SummaryWriter(args.output / "tb")
 
     # get model, optimizer, loss
     cae = model.cae.ConvolutionalAutoEncoder(img_shape, args.embedding_size, args.dropout)
@@ -102,10 +135,22 @@ def main(args):
     embeddings_to_save_per_step = int(embeddings_to_save_per_epoch/steps_per_epoch)
 
     manager = multiprocessing.Manager()
-    queue = manager.Queue()
-    event = manager.Event()
-    consumer = multiprocessing.Process(target=epoch_reporting, args=(args.output, queue, event))
-    consumer.start()
+
+    batch_queue = manager.Queue()
+    batch_event = manager.Event()
+    batch_consumer = multiprocessing.Process(
+        target=batch_reporting, 
+        args=(args.output, batch_queue, batch_event, args.embedding_size), 
+        name="Batch reporting")
+    batch_consumer.start()
+    
+    epoch_queue = manager.Queue()
+    epoch_event = manager.Event()
+    epoch_consumer = multiprocessing.Process(
+        target=epoch_reporting, 
+        args=(args.output, epoch_queue, epoch_event), 
+        name="Epoch reporting")
+    epoch_consumer.start()
 
     for epoch in tqdm(range(args.epochs)):
         # iterate over data
@@ -116,8 +161,12 @@ def main(args):
             global_step += 1
             opt.zero_grad()
 
-            embedding = cae.encoder(batch)
+            stoch_embedding = torch.empty((args.n_stochastic, args.batch_size, args.embedding_size), dtype=batch.dtype)
+            for i in range(args.n_stochastic):
+                tmp = cae.encoder(batch)
+                stoch_embedding[i] = tmp
 
+            embedding = stoch_embedding.mean(dim=0)
             embeddings[
                 b_i*embeddings_to_save_per_step:
                 (b_i+1)*embeddings_to_save_per_step
@@ -137,8 +186,14 @@ def main(args):
 
                 if p.requires_grad:
                     running_gradients[n].update(p.grad)
-            
+
+            if b_i % args.batch_report_frequency == 0: 
+                batch_queue.put({
+                    "stoch_embedding": stoch_embedding.detach().cpu().numpy(),
+                    "global_step": global_step
+                })
             opt.step()
+
 
         # reporting
         item = {
@@ -153,7 +208,7 @@ def main(args):
         for n, rg in running_gradients.items():
             item["running_gradients_avgs"][n] = rg.avg.clone().cpu()
 
-        queue.put(item)
+        epoch_queue.put(item)
         
         running_loss.reset()
         for k, v in running_gradients.items():

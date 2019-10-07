@@ -15,12 +15,16 @@ class HDF5Dataset(Dataset):
                 self.channels.append(channel_fmt % channel)
             else:
                 raise ValueError("Channel %d not present in data-file." % channel)
+            
+        shape = list(self.handle[self.channels[0]]["images"].shape)
+        shape.insert(1, len(self.channels))
+        self.shape = tuple(shape)
 
     def __len__(self):
         return self.get_shape()[0]
 
     def get_shape(self):
-        return numpy.array(self.handle[self.channels[0]]["images"].shape)
+        return self.shape
 
     def __getitem__(self, idx):
         im = numpy.array([self.handle[channel]["images"][idx] for channel in self.channels], dtype=numpy.float32)

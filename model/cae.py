@@ -8,6 +8,14 @@ http://openaccess.thecvf.com/content_ICCV_2017/papers/Dizaji_Deep_Clustering_via
 import torch
 import torch.nn as nn
 import numpy
+from math import ceil, floor
+
+
+def conv_output_size(input_size, pad, ks, stride):
+    return floor((float(input_size + 2 * pad - (ks-1)-1)/stride)+1)
+def convtranspose_output_size(input_size, pad, ks, stride):
+    return (input_size-1)*stride - 2*pad + ks
+
 
 class ConvolutionalEncoder(nn.Module):
 
@@ -25,14 +33,22 @@ class ConvolutionalEncoder(nn.Module):
         super(ConvolutionalEncoder, self).__init__()
 
         filters = [32, 16]
-        embedding_input_shape = ((input_shape[-1]//2)//2)*((input_shape[-2]//2)//2)*filters[-1]
+        stride = 2
+        padding = 1
+        kernel_size = 5
+
+        a = conv_output_size(
+                conv_output_size(
+                    input_shape[1], padding, kernel_size, stride
+                ), padding, kernel_size, stride
+            )
+        embedding_input_shape = a*a*filters[-1]
 
         self.layers = nn.ModuleList()
-
         self.layers.extend([
-            nn.Conv2d(input_shape[0], filters[0], stride=2, kernel_size=5, padding=2),
+            nn.Conv2d(input_shape[0], filters[0], stride=stride, kernel_size=kernel_size, padding=padding),
             nn.LeakyReLU(),
-            nn.Conv2d(filters[0], filters[1], stride=2, kernel_size=5, padding=2),
+            nn.Conv2d(filters[0], filters[1], stride=stride, kernel_size=kernel_size, padding=padding),
             nn.LeakyReLU(),
             nn.Flatten(),
             nn.Linear(embedding_input_shape, embedding_shape),
@@ -64,11 +80,21 @@ class ConvolutionalDecoder(nn.Module):
         super(ConvolutionalDecoder, self).__init__()
         
         filters = [16, 32]
+        stride = 2
+        padding = 1
+        kernel_size = 5+1
+        
+        a = conv_output_size(
+                conv_output_size(
+                    reconstruction_shape[1], padding, kernel_size, stride
+                ), padding, kernel_size, stride
+            )
+        embedding_input_shape = a*a*filters[-1]
 
         self.shape = (
             filters[0],
-            reconstruction_shape[-1]//2//2,
-            reconstruction_shape[-2]//2//2,
+            a,
+            a
         )
         
         self.linear = nn.Linear(input_shape, numpy.prod(self.shape))
@@ -76,9 +102,9 @@ class ConvolutionalDecoder(nn.Module):
         self.layers = nn.ModuleList()
 
         self.layers.extend([
-            nn.ConvTranspose2d(filters[0], filters[1], stride=1, kernel_size=8),
+            nn.ConvTranspose2d(filters[0], filters[1], stride=stride, padding=padding, kernel_size=kernel_size),
             nn.LeakyReLU(),
-            nn.ConvTranspose2d(filters[1], reconstruction_shape[0], stride=1, kernel_size=15),
+            nn.ConvTranspose2d(filters[1], reconstruction_shape[0], stride=stride, padding=padding, kernel_size=kernel_size),
             nn.LeakyReLU()
         ])
 
