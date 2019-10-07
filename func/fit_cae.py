@@ -10,7 +10,6 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 import util.metrics
 import logging
-logging.basicConfig(level=logging.INFO)
 from math import ceil
 import time
 from torch import multiprocessing
@@ -18,6 +17,12 @@ from torch import multiprocessing
 multiprocessing.set_start_method('spawn', True)
 
 def epoch_reporting(output, queue, event):
+    logger = logging.getLogger("epoch_reporting")
+    logger.setLevel(logging.DEBUG)
+    logger.propagate = False
+    handler = logging.FileHandler("epoch_reporting.log", mode="w")
+    handler.setLevel(logging.DEBUG)
+    logger.addHandler(handler)
 
     # tensorboard writer
     writer = SummaryWriter(output / "tb")
@@ -25,7 +30,7 @@ def epoch_reporting(output, queue, event):
     while not event.is_set():
         item = queue.get()
         global_step = item["global_step"]
-        
+
         input_grid = utils.make_grid(item["input_grid"], nrow=3, normalize=True)
         output_grid = utils.make_grid(item["output_grid"], nrow=3, normalize=True)
 
@@ -34,14 +39,17 @@ def epoch_reporting(output, queue, event):
         writer.add_image("training/input", input_grid, global_step=global_step)
         writer.add_image("training/output", output_grid, global_step=global_step)
         writer.add_scalar("training/loss", item["running_loss_avg"], global_step=global_step)
-        
+
         for n, avg in item["running_gradients_avgs"].items():
             writer.add_histogram("gradients/%s" % n, avg, global_step=global_step)
+
+        logger.debug("finish")
 
     writer.close()
 
 
 def main(args):
+    logging.getLogger().setLevel(logging.DEBUG)
 
     # prepare data
     if type(args.data) is Path:
@@ -134,16 +142,16 @@ def main(args):
 
         # reporting
         item = {
-            "input_grid": batch.detach().cpu()[:15],
-            "output_grid": embedding.detach().cpu()[:15],
-            "embeddings": embeddings,
-            "label_imgs": label_imgs,
-            "running_loss_avg": running_loss.avg.cpu(),
+            "input_grid": batch.clone().detach().cpu()[:15],
+            "output_grid": embedding.clone().detach().cpu()[:15],
+            "embeddings": embeddings.clone(),
+            "label_imgs": label_imgs.clone(),
+            "running_loss_avg": running_loss.avg.clone().cpu(),
             "running_gradients_avgs": {},
             "global_step": global_step
         }
         for n, rg in running_gradients.items():
-            item["running_gradients_avgs"][n] = rg.avg.cpu()
+            item["running_gradients_avgs"][n] = rg.avg.clone().cpu()
 
         queue.put(item)
         
