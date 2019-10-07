@@ -14,12 +14,13 @@ class ConvolutionalEncoder(nn.Module):
     """Convolutional encoder
     """
 
-    def __init__(self, input_shape, embedding_shape):
+    def __init__(self, input_shape, embedding_shape, dropout=-1.):
         """Initialize encoder layers.
         
         Arguments:
             input_shape {int} -- Flattened input shape
             embedding_shape {int} -- Embedding dimension
+            dropout {float} -- Dropout probability or <= 0.0 if not wanted
         """
         super(ConvolutionalEncoder, self).__init__()
 
@@ -38,6 +39,10 @@ class ConvolutionalEncoder(nn.Module):
             nn.Sigmoid()
         ])
 
+        if dropout > 0:
+            self.layers.insert(2, nn.Dropout(dropout))
+            self.layers.insert(5, nn.Dropout(dropout))
+
 
     def forward(self, x):
         for layer in self.layers:
@@ -50,6 +55,12 @@ class ConvolutionalDecoder(nn.Module):
     """
 
     def __init__(self, input_shape, reconstruction_shape):
+        """[summary]
+
+        Arguments:
+            input_shape {tuple} -- [description]
+            reconstruction_shape {tuple} -- [description]
+        """
         super(ConvolutionalDecoder, self).__init__()
         
         filters = [16, 32]
@@ -84,18 +95,19 @@ class ConvolutionalDecoder(nn.Module):
 
 class ConvolutionalAutoEncoder(nn.Module):
 
-    def __init__(self, input_shape, embedding_shape):
+    def __init__(self, input_shape, embedding_shape, dropout):
 
         """Denoising auto-encoder.
         
         Arguments:
             input_shape {int} -- Input shape
             embedding_shape {int} -- Embedding dimension
+            dropout {float} -- [description]
         
         """
         super(ConvolutionalAutoEncoder, self).__init__()
                 
-        self.encoder = ConvolutionalEncoder(input_shape, embedding_shape)
+        self.encoder = ConvolutionalEncoder(input_shape, embedding_shape, dropout)
         self.decoder = ConvolutionalDecoder(embedding_shape, input_shape)
 
     def forward(self, x):

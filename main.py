@@ -1,5 +1,6 @@
 import argparse
-from func import augtest, fit_dae, fit_cae, fit_dyn_ae
+from func import augtest, fit_dae, fit_cae
+from func import dyn_ae_clustering
 import os
 import importlib
 from pathlib import Path
@@ -44,17 +45,16 @@ def main():
     subparser_dae.set_defaults(func=fit_dae.main)
     
     subparser_cae = subparsers.add_parser(name="CAE", parents=[parser_model])
+    group_cae = subparser_cae.add_argument_group(title="CAE specific")
+    group_cae.add_argument("--dropout", "-p", default=0.0, type=float)
     subparser_cae.set_defaults(func=fit_cae.main)
-    
-    parser_fixed = argparse.ArgumentParser(parents=[parser_model], add_help=False)
-
-    group_fixed_fit = parser_fixed.add_argument_group(title="fit", description="Arguments related to model fitting with fixed clusters.")
-    group_fixed_fit.add_argument("--clusters", "-N", help="Number of clusters", required=True, type=int)
-    group_fixed_fit.add_argument("--pretrained-model", "-p", required=True, type=parse_file_arg)
-    group_fixed_fit.add_argument("--tolerance", "-t", default=0.0001, type=float)
-    
-    subparser_cae = subparsers.add_parser(name="dynAE", parents=[parser_fixed])
-    subparser_cae.set_defaults(func=fit_dyn_ae.main)
+        
+    subparser_dynAE = subparsers.add_parser(name="dynAE", parents=[parser_model])
+    group_dynAE = subparser_dynAE.add_argument_group(title="dynAE specific", description="Arguments related to model fitting with fixed clusters.")
+    group_dynAE.add_argument("--clusters", "-N", help="Number of clusters", required=True, type=int)
+    group_dynAE.add_argument("--pretrained-model", "-p", required=True, type=parse_file_arg)
+    group_dynAE.add_argument("--tolerance", "-t", default=0.0001, type=float)
+    subparser_dynAE.set_defaults(func=dyn_ae_clustering.main)
     
     args = parser.parse_args()
 

@@ -81,7 +81,7 @@ def main(args):
     )
 
     # get model, optimizer, loss
-    cae = model.cae.ConvolutionalAutoEncoder(img_shape, args.embedding_size)
+    cae = model.cae.ConvolutionalAutoEncoder(img_shape, args.embedding_size, args.dropout)
     if args.cuda:
         cae.cuda()
     # writer.add_graph(cae, next(iter(loader_aug)))
