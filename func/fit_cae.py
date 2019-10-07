@@ -132,9 +132,6 @@ def main(args):
             
             opt.step()
 
-            if b_i == 0:
-                break
-
         # reporting
         item = {
             "input_grid": batch.detach().cpu()[:15],
