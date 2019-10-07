@@ -21,7 +21,7 @@ def epoch_reporting(output, queue, event):
     logger.setLevel(logging.DEBUG)
     logger.propagate = False
     handler = logging.FileHandler("epoch_reporting.log", mode="w")
-    handler.setLevel(logging.DEBUG)
+    handler.setLevel(logging.INFO)
     logger.addHandler(handler)
 
     # tensorboard writer
