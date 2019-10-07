@@ -154,19 +154,19 @@ def main(args):
         name="Epoch reporting")
     epoch_consumer.start()
 
+    stoch_embedding = torch.empty((args.n_stochastic, args.batch_size, args.embedding_size), dtype=batch.dtype).to(device)
+    embeddings = torch.empty((embeddings_to_save_per_epoch, args.embedding_size), dtype=np.float)
+    label_imgs = torch.empty(tuple([embeddings_to_save_per_epoch] + list(img_shape)), dtype=np.float)
+    
     for epoch in tqdm(range(args.epochs)):
         # iterate over data
 
-        embeddings = torch.empty((embeddings_to_save_per_epoch, args.embedding_size), dtype=np.float)
-        label_imgs = torch.empty(tuple([embeddings_to_save_per_epoch] + list(img_shape)), dtype=np.float)
         for b_i, batch in enumerate(tqdm(loader_aug, leave=False)):
             global_step += 1
             opt.zero_grad()
 
-            stoch_embedding = torch.empty((args.n_stochastic, args.batch_size, args.embedding_size), dtype=batch.dtype).to(device)
             for i in range(args.n_stochastic):
-                tmp = cae.encoder(batch)
-                stoch_embedding[i] = tmp
+                stoch_embedding[i] = cae.encoder(batch)
 
             embedding = stoch_embedding.mean(dim=0)
             embeddings[
