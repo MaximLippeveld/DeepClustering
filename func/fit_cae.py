@@ -53,7 +53,7 @@ def main(args):
 
     # prepare data
     if isinstance(args.data, Path):
-        ds = data.sets.HDF5Dataset(args.data, args.channels)
+        ds = data.sets.HDF5Dataset(str(args.data), args.channels)
         img_shape = ds.get_shape()[1:]
         channel_shape = ds.get_shape()[2:]
         pre_augs = [ToTensor(cuda=args.cuda)]
@@ -76,7 +76,7 @@ def main(args):
 
     loader_aug = DataLoader(
         ds, batch_size=args.batch_size, shuffle=False, 
-        drop_last=False, num_workers=0,
+        drop_last=False, num_workers=8,
         collate_fn=augmenter
     )
 

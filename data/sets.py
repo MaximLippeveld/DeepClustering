@@ -2,11 +2,12 @@ from torch.utils.data import Dataset
 import torch
 import h5py
 import numpy
+import h5pickle
 
 class HDF5Dataset(Dataset):
 
     def __init__(self, handle, channels, augmentation=None):
-        self.handle = h5py.File(handle, "r", libver="latest", swmr=True)
+        self.handle = h5pickle.File(handle, "r", libver="latest", swmr=True)
 
         self.channels = []
         channel_fmt = "channel_%d"

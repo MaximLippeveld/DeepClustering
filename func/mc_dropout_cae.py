@@ -154,7 +154,7 @@ def main(args):
         name="Epoch reporting")
     epoch_consumer.start()
 
-    stoch_embedding = torch.empty((args.n_stochastic, args.batch_size, args.embedding_size), dtype=batch.dtype).to(device)
+    stoch_embedding = torch.empty((args.n_stochastic, args.batch_size, args.embedding_size), dtype=torch.float32).to(device)
     embeddings = torch.empty((embeddings_to_save_per_epoch, args.embedding_size), dtype=np.float)
     label_imgs = torch.empty(tuple([embeddings_to_save_per_epoch] + list(img_shape)), dtype=np.float)
     
@@ -191,7 +191,7 @@ def main(args):
 
             if b_i % args.batch_report_frequency == 0: 
                 batch_queue.put({
-                    "stoch_embedding": stoch_embedding.detach().cpu().numpy(),
+                    "stoch_embedding": stoch_embedding.clone().detach().cpu().numpy(),
                     "global_step": global_step
                 })
             opt.step()
