@@ -12,9 +12,11 @@ import util.metrics
 import logging
 from math import ceil
 import time
-import multiprocessing
+from torch import multiprocessing
 
-def epoch_reporting(writer, queue):
+multiprocessing.set_start_method('spawn', True)
+
+def epoch_reporting(output, queue, event):
     logger = logging.getLogger("epoch_reporting")
     logger.setLevel(logging.DEBUG)
     logger.propagate = False
@@ -22,8 +24,10 @@ def epoch_reporting(writer, queue):
     handler.setLevel(logging.DEBUG)
     logger.addHandler(handler)
 
-    while True:
-        logger.debug(queue.qsize())
+    # tensorboard writer
+    writer = SummaryWriter(output / "tb")
+
+    while not event.is_set():
         item = queue.get()
         global_step = item["global_step"]
 
@@ -36,10 +40,12 @@ def epoch_reporting(writer, queue):
         writer.add_image("training/output", output_grid, global_step=global_step)
         writer.add_scalar("training/loss", item["running_loss_avg"], global_step=global_step)
 
-        # for n, avg in item["running_gradients_avgs"].items():
-        #     writer.add_histogram("gradients/%s" % n, avg, global_step=global_step)
+        for n, avg in item["running_gradients_avgs"].items():
+            writer.add_histogram("gradients/%s" % n, avg, global_step=global_step)
 
         logger.debug("finish")
+
+    writer.close()
 
 
 def main(args):
@@ -74,14 +80,11 @@ def main(args):
         collate_fn=augmenter
     )
 
-    # tensorboard writer
-    writer = SummaryWriter(args.output / "tb")
-
     # get model, optimizer, loss
     cae = model.cae.ConvolutionalAutoEncoder(img_shape, args.embedding_size)
     if args.cuda:
         cae.cuda()
-    writer.add_graph(cae, next(iter(loader_aug)))
+    # writer.add_graph(cae, next(iter(loader_aug)))
     opt = torch.optim.Adam(cae.parameters())
 
     logging.info("Trainable model parameters: %d" % sum(p.numel() for p in cae.parameters() if p.requires_grad))
@@ -100,8 +103,8 @@ def main(args):
 
     manager = multiprocessing.Manager()
     queue = manager.Queue()
-    consumer = multiprocessing.Process(target=epoch_reporting, args=(writer, queue))
-    consumer.daemon = True
+    event = manager.Event()
+    consumer = multiprocessing.Process(target=epoch_reporting, args=(args.output, queue, event))
     consumer.start()
 
     for epoch in tqdm(range(args.epochs)):
@@ -137,6 +140,9 @@ def main(args):
             
             opt.step()
 
+            if b_i == 0:
+                break
+
         # reporting
         item = {
             "input_grid": batch.clone().detach().cpu()[:15],
@@ -158,5 +164,6 @@ def main(args):
 
     torch.save(cae.state_dict(), args.output / "model.pth")
 
-    writer.close()
+    event.set()
+    consumer.join()
     
