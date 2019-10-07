@@ -13,10 +13,16 @@ import logging
 logging.basicConfig(level=logging.INFO)
 from math import ceil
 import time
-import multiprocessing
+from torch import multiprocessing
 
-def epoch_reporting(writer, queue):
-    while True:
+multiprocessing.set_start_method('spawn', True)
+
+def epoch_reporting(output, queue, event):
+
+    # tensorboard writer
+    writer = SummaryWriter(output / "tb")
+
+    while not event.is_set():
         item = queue.get()
         global_step = item["global_step"]
         
@@ -31,6 +37,8 @@ def epoch_reporting(writer, queue):
         
         for n, avg in item["running_gradients_avgs"].items():
             writer.add_histogram("gradients/%s" % n, avg, global_step=global_step)
+
+    writer.close()
 
 
 def main(args):
@@ -64,14 +72,11 @@ def main(args):
         collate_fn=augmenter
     )
 
-    # tensorboard writer
-    writer = SummaryWriter(args.output / "tb")
-
     # get model, optimizer, loss
     cae = model.cae.ConvolutionalAutoEncoder(img_shape, args.embedding_size)
     if args.cuda:
         cae.cuda()
-    writer.add_graph(cae, next(iter(loader_aug)))
+    # writer.add_graph(cae, next(iter(loader_aug)))
     opt = torch.optim.Adam(cae.parameters())
 
     logging.info("Trainable model parameters: %d" % sum(p.numel() for p in cae.parameters() if p.requires_grad))
@@ -90,8 +95,8 @@ def main(args):
 
     manager = multiprocessing.Manager()
     queue = manager.Queue()
-    consumer = multiprocessing.Process(target=epoch_reporting, args=(writer, queue))
-    consumer.daemon = True
+    event = manager.Event()
+    consumer = multiprocessing.Process(target=epoch_reporting, args=(args.output, queue, event))
     consumer.start()
 
     for epoch in tqdm(range(args.epochs)):
@@ -127,6 +132,9 @@ def main(args):
             
             opt.step()
 
+            if b_i == 0:
+                break
+
         # reporting
         item = {
             "input_grid": batch.detach().cpu()[:15],
@@ -148,5 +156,6 @@ def main(args):
 
     torch.save(cae.state_dict(), args.output / "model.pth")
 
-    writer.close()
+    event.set()
+    consumer.join()
     
