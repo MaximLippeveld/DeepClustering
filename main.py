@@ -73,7 +73,7 @@ def main():
         pass
 
     # specify argument dependencies
-    if args.data.suffix in [".h5", ".hdf5"]:
+    if isinstance(args.data, Path) and args.data.suffix in [".h5", ".hdf5"]:
         if not hasattr(args, "channels"):
             raise ValueError("Channels is required.")
 
