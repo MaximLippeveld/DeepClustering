@@ -1,7 +1,7 @@
 import data.sets, data.transformers
 import model.cae
 import torch.nn.functional as F
-import torch.optim
+import torch.optim, torch.autograd
 from tqdm import tqdm
 from torchvision import datasets, transforms, utils
 from pathlib import Path
@@ -104,63 +104,65 @@ def main(args):
     manager = multiprocessing.Manager()
     queue = manager.Queue()
     event = manager.Event()
-    consumer = multiprocessing.Process(target=epoch_reporting, args=(args.output, queue, event))
-    consumer.start()
+    consumer = multiprocessing.Process(target=epoch_reporting, args=(args.output, queue, event), name="Epoch reporting")
 
-    for epoch in tqdm(range(args.epochs)):
-        # iterate over data
+    try:
+        consumer.start()
 
-        embeddings = torch.empty((embeddings_to_save_per_epoch, args.embedding_size), dtype=np.float)
-        label_imgs = torch.empty(tuple([embeddings_to_save_per_epoch] + list(img_shape)), dtype=np.float)
-        for b_i, batch in enumerate(tqdm(loader_aug, leave=False)):
-            global_step += 1
-            opt.zero_grad()
+        with torch.autograd.detect_anomaly():
+            for epoch in tqdm(range(args.epochs)):
+                # iterate over data
 
-            embedding = cae.encoder(batch)
+                embeddings = torch.empty((embeddings_to_save_per_epoch, args.embedding_size), dtype=np.float)
+                label_imgs = torch.empty(tuple([embeddings_to_save_per_epoch] + list(img_shape)), dtype=np.float)
+                for b_i, batch in enumerate(tqdm(loader_aug, leave=False)):
+                    global_step += 1
+                    opt.zero_grad()
 
-            embeddings[
-                b_i*embeddings_to_save_per_step:
-                (b_i+1)*embeddings_to_save_per_step
-            ] = embedding.detach().cpu()[:embeddings_to_save_per_step]
-            label_imgs[
-                b_i*embeddings_to_save_per_step:
-                (b_i+1)*embeddings_to_save_per_step
-            ] = batch.detach().cpu()[:embeddings_to_save_per_step]
+                    embedding = cae.encoder(batch)
 
-            target = cae.decoder(embedding)
-            loss = F.mse_loss(batch, target, reduction="mean")
-            loss.backward()
-            running_loss.update(loss)
-            for n, p in cae.named_parameters():
-                if epoch==0 and b_i==0:
-                    running_gradients[n].reset(p.grad.shape)
+                    embeddings[
+                        b_i*embeddings_to_save_per_step:
+                        (b_i+1)*embeddings_to_save_per_step
+                    ] = embedding.detach().cpu()[:embeddings_to_save_per_step]
+                    label_imgs[
+                        b_i*embeddings_to_save_per_step:
+                        (b_i+1)*embeddings_to_save_per_step
+                    ] = batch.detach().cpu()[:embeddings_to_save_per_step]
 
-                if p.requires_grad:
-                    running_gradients[n].update(p.grad)
-            
-            opt.step()
+                    target = cae.decoder(embedding)
+                    loss = F.mse_loss(batch, target, reduction="mean")
+                    loss.backward()
+                    running_loss.update(loss)
+                    for n, p in cae.named_parameters():
+                        if epoch==0 and b_i==0:
+                            running_gradients[n].reset(p.grad.shape)
 
-        # reporting
-        item = {
-            "input_grid": batch.clone().detach().cpu()[:15],
-            "output_grid": target.clone().detach().cpu()[:15],
-            "embeddings": embeddings.clone(),
-            "label_imgs": label_imgs.clone(),
-            "running_loss_avg": running_loss.avg.clone().cpu(),
-            "running_gradients_avgs": {},
-            "global_step": global_step
-        }
-        for n, rg in running_gradients.items():
-            item["running_gradients_avgs"][n] = rg.avg.clone().cpu()
+                        if p.requires_grad:
+                            running_gradients[n].update(p.grad)
+                    
+                    opt.step()
 
-        queue.put(item)
-        
-        running_loss.reset()
-        for k, v in running_gradients.items():
-            v.reset()
+                # reporting
+                item = {
+                    "input_grid": batch.clone().detach().cpu()[:15],
+                    "output_grid": target.clone().detach().cpu()[:15],
+                    "embeddings": embeddings.clone(),
+                    "label_imgs": label_imgs.clone(),
+                    "running_loss_avg": running_loss.avg.clone().cpu(),
+                    "running_gradients_avgs": {},
+                    "global_step": global_step
+                }
+                for n, rg in running_gradients.items():
+                    item["running_gradients_avgs"][n] = rg.avg.clone().cpu()
 
-    torch.save(cae.state_dict(), args.output / "model.pth")
+                queue.put(item)
+                
+                running_loss.reset()
+                for k, v in running_gradients.items():
+                    v.reset()
 
-    event.set()
-    consumer.join()
-    
+            torch.save(cae.state_dict(), args.output / "model.pth")
+    finally:
+        event.set()
+        consumer.join()

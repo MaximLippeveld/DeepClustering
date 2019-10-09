@@ -26,7 +26,7 @@ class ConvolutionalEncoder(nn.Module):
         """Initialize encoder layers.
         
         Arguments:
-            input_shape {int} -- Flattened input shape
+            input_shape {int} -- Flattened input shapa
             embedding_shape {int} -- Embedding dimension
             dropout {float} -- Dropout probability or <= 0.0 if not wanted
         """
@@ -35,7 +35,7 @@ class ConvolutionalEncoder(nn.Module):
         filters = [32, 16]
         stride = 2
         padding = 1
-        kernel_size = 5
+        kernel_size = 6 if input_shape[0] == 90 else 4
 
         a = conv_output_size(
                 conv_output_size(
@@ -82,7 +82,7 @@ class ConvolutionalDecoder(nn.Module):
         filters = [16, 32]
         stride = 2
         padding = 1
-        kernel_size = 5+1
+        kernel_size = 6 if reconstruction_shape[0] == 90 else 4
         
         a = conv_output_size(
                 conv_output_size(
