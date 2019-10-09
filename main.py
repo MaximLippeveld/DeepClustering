@@ -1,5 +1,6 @@
 import argparse
-from func import augtest, fit_dae, fit_cae
+from func import augtest, lmdbtest
+from func import fit_dae, fit_cae
 from func import dyn_ae_clustering
 from func import mc_dropout_cae
 import os
@@ -22,9 +23,6 @@ def main():
     parser = argparse.ArgumentParser(prog="Deep Clustering")
     subparsers = parser.add_subparsers()
     
-    subparser_augtest = subparsers.add_parser(name="augtest", parents=[parent_parser])
-    subparser_augtest.set_defaults(func=augtest.main)
-
     group_meta = parent_parser.add_argument_group(title="meta", description="Arguments related to running the program")
     group_meta.add_argument("--cuda", "-u", action="store_true", help="Use cuda")
     group_meta.add_argument("--batch-report-frequency", default=50, type=int)
@@ -35,6 +33,12 @@ def main():
     group_data.add_argument("--output", "-o", help="Directory for storing output.", default="tmp", type=Path)
     group_data.add_argument("--rm", help="Remove output directory if exists.", action="store_true", default=False)
     group_data.add_argument("--channels", "-c", nargs="*", type=int, help="Channel numbers to be used (only if data is HDF5).")
+    
+    subparser_augtest = subparsers.add_parser(name="augtest", parents=[parent_parser])
+    subparser_augtest.set_defaults(func=augtest.main)
+    
+    subparser_lmdbtest = subparsers.add_parser(name="lmdbtest", parents=[parent_parser])
+    subparser_lmdbtest.set_defaults(func=lmdbtest.main)
 
     parser_model = argparse.ArgumentParser(parents=[parent_parser], add_help=False)
     
