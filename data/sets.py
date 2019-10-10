@@ -28,7 +28,7 @@ def centercrop(width, height, image):
 def centerpad(width, height, image):
     pad = (width-image.shape[1])/2., (height-image.shape[2])/2.
 
-    tmp_im = torch.zeros((image.shape[0], width, height), dtype=image.dtype)
+    tmp_im = numpy.zeros((image.shape[0], width, height), dtype=image.dtype)
     tmp_im[
         :,
         int(floor(pad[0])): -int(ceil(pad[0])) if pad[0] > 0 else None,
@@ -68,10 +68,10 @@ class LMDBDataset(Dataset):
 
         width, height, image, mask = pickle.loads(byteflow)
 
-        image = torch.from_numpy(np.multiply(
+        image = np.multiply(
             np.float32(image),
             np.float32(mask)
-        ))
+        )
 
         if width > size or height > size:
             image = centercrop(size, size, image)

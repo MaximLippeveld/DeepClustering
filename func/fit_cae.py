@@ -13,6 +13,8 @@ import logging
 from math import ceil
 import time
 from torch import multiprocessing
+import imgaug as ia
+import imgaug.augmenters as iaa
 
 multiprocessing.set_start_method('spawn', True)
 
@@ -48,6 +50,15 @@ def epoch_reporting(output, queue, event):
     writer.close()
 
 
+class IASeq:
+    def __init__(self, seq):
+        self.seq = seq
+
+    def __call__(self, x):
+        aug = self.seq(images=np.moveaxis(np.array(x), 1, -1))
+        return np.moveaxis(aug, -1, 1)
+
+
 def main(args):
     logging.getLogger().setLevel(logging.DEBUG)
 
@@ -61,7 +72,7 @@ def main(args):
         with env.begin(write=False) as txn:
             length = int.from_bytes(txn.get(b'__len__'), "big")
 
-        ds = data.sets.LMDBDataset(str(args.data), args.channels, 90, length, data.transformers.MinMax())
+        ds = data.sets.LMDBDataset(str(args.data), args.channels, 90, length, None)
         img_shape = (len(args.channels), 90, 90)
         channel_shape = (90, 90)
     else:
@@ -70,12 +81,16 @@ def main(args):
         ds = torch.unsqueeze(ds, 1)
         img_shape = ds.shape[1:]
 
+    ia_seq = iaa.Sequential([
+        iaa.Affine(rotate=(-160, 160), scale=(0.5, 1.5), translate_percent=(-0.1, 0.1)),
+        iaa.HorizontalFlip(),
+        iaa.VerticalFlip()
+    ])
+
     augs = [
-        Stack(cuda=args.cuda),
-        FlipX(channel_shape, cuda=args.cuda),
-        FlipY(channel_shape, cuda=args.cuda),
-        RandomDeformation(channel_shape, sampling_interval=7, cuda=args.cuda),
-        RotateRandom(channel_shape, cuda=args.cuda)
+        IASeq(ia_seq),
+        torch.Tensor,
+        data.transformers.MinMax(),
     ]
     augmenter = transforms.Compose(augs)
 
@@ -123,6 +138,9 @@ def main(args):
                 for b_i, batch in enumerate(tqdm(loader_aug, leave=False)):
                     global_step += 1
                     opt.zero_grad()
+
+                    if args.cuda:
+                        batch = batch.cuda()
 
                     embedding = cae.encoder(batch)
 

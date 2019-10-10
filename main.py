@@ -73,7 +73,7 @@ def main():
 
     from torch.multiprocessing import set_start_method
     try:
-        set_start_method('spawn', True)
+        set_start_method('fork', True)
     except RuntimeError:
         pass
 
