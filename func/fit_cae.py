@@ -53,10 +53,18 @@ def main(args):
 
     # prepare data
     if isinstance(args.data, Path):
-        ds = data.sets.HDF5Dataset(str(args.data), args.channels)
-        img_shape = ds.get_shape()[1:]
-        channel_shape = ds.get_shape()[2:]
-        pre_augs = [ToTensor(cuda=args.cuda)]
+        import lmdb
+
+        env = lmdb.open(str(args.data), subdir=args.data.is_dir(),
+                             readonly=True, lock=False,
+                             readahead=False, meminit=False)
+        with env.begin(write=False) as txn:
+            length = int.from_bytes(txn.get(b'__len__'), "big")
+
+        ds = data.sets.LMDBDataset(str(args.data), args.channels, 90, length)
+        img_shape = (len(args.channels), 90, 90)
+        channel_shape = (90, 90)
+        pre_augs = [ToTensor(cuda=args.cuda), ToFloatTensor(cuda=args.cuda), data.transformers.MinMax()]
         post_augs = []
     else:
         ds = datasets.FashionMNIST("data/datasets/", train=True, download=True).data
@@ -76,7 +84,7 @@ def main(args):
 
     loader_aug = DataLoader(
         ds, batch_size=args.batch_size, shuffle=False, 
-        drop_last=False, num_workers=8,
+        drop_last=False, num_workers=16,
         collate_fn=augmenter
     )
 
@@ -119,6 +127,9 @@ def main(args):
                     global_step += 1
                     opt.zero_grad()
 
+                    if args.cuda:
+                        batch = batch.cuda()
+
                     embedding = cae.encoder(batch)
 
                     embeddings[
@@ -145,8 +156,8 @@ def main(args):
 
                 # reporting
                 item = {
-                    "input_grid": batch.clone().detach().cpu()[:15],
-                    "output_grid": target.clone().detach().cpu()[:15],
+                    "input_grid": batch[:15].clone().detach().cpu(),
+                    "output_grid": target[:15].clone().detach().cpu(),
                     "embeddings": embeddings.clone(),
                     "label_imgs": label_imgs.clone(),
                     "running_loss_avg": running_loss.avg.clone().cpu(),

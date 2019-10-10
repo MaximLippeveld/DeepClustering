@@ -35,7 +35,7 @@ class ConvolutionalEncoder(nn.Module):
         filters = [32, 16]
         stride = 2
         padding = 1
-        kernel_size = 6 if input_shape[0] == 90 else 4
+        kernel_size = 6 if input_shape[1] == 90 else 4
 
         a = conv_output_size(
                 conv_output_size(
@@ -82,7 +82,7 @@ class ConvolutionalDecoder(nn.Module):
         filters = [16, 32]
         stride = 2
         padding = 1
-        kernel_size = 6 if reconstruction_shape[0] == 90 else 4
+        kernel_size = 6 if reconstruction_shape[1] == 90 else 4
         
         a = conv_output_size(
                 conv_output_size(
