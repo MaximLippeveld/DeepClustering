@@ -81,7 +81,7 @@ def main(args):
 
     loader_aug = DataLoader(
         ds, batch_size=args.batch_size, shuffle=True, 
-        drop_last=False, num_workers=2,
+        drop_last=False, num_workers=args.workers,
         collate_fn=augmenter
     )
 

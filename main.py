@@ -26,6 +26,7 @@ def main():
     group_meta = parent_parser.add_argument_group(title="meta", description="Arguments related to running the program")
     group_meta.add_argument("--cuda", "-u", action="store_true", help="Use cuda")
     group_meta.add_argument("--batch-report-frequency", default=50, type=int)
+    group_meta.add_argument("--workers", "-w", default=0, type=int)
 
     group_data = parent_parser.add_argument_group(title="data", description="Arguments related to data input.")
     group_data.add_argument("--root", "-r", help="Directory prepended to any path input. (Can be path to dir structure shared accross environments.)", type=parse_file_arg)
@@ -102,7 +103,13 @@ def main():
         if args.output == Path("tmp") or args.rm:
             shutil.rmtree(args.output)
 
-    args.output.mkdir() 
+    args.output.mkdir()
+
+    # set seeds
+    import torch
+    torch.manual_seed(42)
+    import numpy
+    numpy.random.seed(42)
 
     args.func(args)
 
