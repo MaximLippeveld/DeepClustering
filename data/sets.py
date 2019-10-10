@@ -28,7 +28,7 @@ def centercrop(width, height, image):
 def centerpad(width, height, image):
     pad = (width-image.shape[1])/2., (height-image.shape[2])/2.
 
-    tmp_im = np.zeros((image.shape[0], width, height), dtype=image.dtype)
+    tmp_im = torch.zeros((image.shape[0], width, height), dtype=image.dtype)
     tmp_im[
         :,
         int(floor(pad[0])): -int(ceil(pad[0])) if pad[0] > 0 else None,
@@ -40,13 +40,14 @@ def centerpad(width, height, image):
 
 class LMDBDataset(Dataset):
 
-    def __init__(self, db_path, channels, size, length):
+    def __init__(self, db_path, channels, size, length, transform=None):
         self.channels = channels
         self.db_path = db_path
         self.size = size
         self.length = length
         self.idx_bytes = int(numpy.ceil(numpy.floor(numpy.log2(self.length))/8.))
         self.env = None
+        self.transform = transform
 
     def setup(self):
         self.env = lmdb.open(self.db_path, subdir=os.path.isdir(self.db_path),
@@ -66,16 +67,20 @@ class LMDBDataset(Dataset):
             byteflow = txn.get(idx)
 
         width, height, image, mask = pickle.loads(byteflow)
-        image = np.multiply(
+
+        image = torch.from_numpy(np.multiply(
             np.float32(image),
             np.float32(mask)
-        )
+        ))
 
         if width > size or height > size:
             image = centercrop(size, size, image)
 
         if width < size or height < size:
             image = centerpad(size, size, image)
+
+        if self.transform is not None:
+            image = self.transform(image)
 
         return image
 

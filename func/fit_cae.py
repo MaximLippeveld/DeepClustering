@@ -61,30 +61,27 @@ def main(args):
         with env.begin(write=False) as txn:
             length = int.from_bytes(txn.get(b'__len__'), "big")
 
-        ds = data.sets.LMDBDataset(str(args.data), args.channels, 90, length)
+        ds = data.sets.LMDBDataset(str(args.data), args.channels, 90, length, data.transformers.MinMax())
         img_shape = (len(args.channels), 90, 90)
         channel_shape = (90, 90)
-        pre_augs = [ToTensor(cuda=args.cuda), ToFloatTensor(cuda=args.cuda), data.transformers.MinMax()]
-        post_augs = []
     else:
         ds = datasets.FashionMNIST("data/datasets/", train=True, download=True).data
         channel_shape = ds.shape[1:]
         ds = torch.unsqueeze(ds, 1)
         img_shape = ds.shape[1:]
-        pre_augs = [Stack(cuda=args.cuda), ToFloatTensor(cuda=args.cuda), data.transformers.MinMax()]
-        post_augs = []
 
-    augs = pre_augs + [
+    augs = [
+        Stack(cuda=args.cuda),
         FlipX(channel_shape, cuda=args.cuda),
         FlipY(channel_shape, cuda=args.cuda),
         RandomDeformation(channel_shape, sampling_interval=7, cuda=args.cuda),
         RotateRandom(channel_shape, cuda=args.cuda)
-    ] + post_augs
+    ]
     augmenter = transforms.Compose(augs)
 
     loader_aug = DataLoader(
-        ds, batch_size=args.batch_size, shuffle=False, 
-        drop_last=False, num_workers=16,
+        ds, batch_size=args.batch_size, shuffle=True, 
+        drop_last=False, num_workers=2,
         collate_fn=augmenter
     )
 
@@ -126,9 +123,6 @@ def main(args):
                 for b_i, batch in enumerate(tqdm(loader_aug, leave=False)):
                     global_step += 1
                     opt.zero_grad()
-
-                    if args.cuda:
-                        batch = batch.cuda()
 
                     embedding = cae.encoder(batch)
 
