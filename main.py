@@ -71,11 +71,11 @@ def main():
     
     args = parser.parse_args()
 
-    from torch.multiprocessing import set_start_method
-    try:
-        set_start_method('spawn', True)
-    except RuntimeError:
-        pass
+    # from torch.multiprocessing import set_start_method
+    # try:
+    #     set_start_method('spawn', True)
+    # except RuntimeError:
+    #     pass
 
     # specify argument dependencies
     if isinstance(args.data, Path) and args.data.suffix in [".h5", ".hdf5"]:
