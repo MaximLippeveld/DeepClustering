@@ -42,13 +42,19 @@ def epoch_reporting(output, queue, n_channels):
             
             writer.add_image("training/input.%d" % i, input_grid, global_step=global_step)
             writer.add_image("training/output.%d" % i, output_grid, global_step=global_step)
+        del item["input_grid"]
+        del item["output_grid"]
 
         writer.add_embedding(item["embeddings"], label_img=item["label_imgs"], global_step=global_step)
-        
+        del item["embeddings"]
+        del item["label_imgs"]
+
         writer.add_scalar("training/loss", item["running_loss_avg"], global_step=global_step)
+        del item["running_loss_avg"]
 
         for n, avg in item["running_gradients_avgs"].items():
             writer.add_histogram("gradients/%s" % n, avg, global_step=global_step)
+        del item["running_gradients_avgs"]
 
         logger.debug("finish")
 
@@ -66,7 +72,7 @@ def batch_reporting(output, queue):
         global_step = item["global_step"]
 
         writer.add_histogram("activations/%s" % item["name"], item["output"], global_step=global_step)
-
+        del item["output"]
 
 class IASeq:
     def __init__(self, seq):
@@ -161,7 +167,7 @@ def main(args):
             item = {
                 "name": module_map[id(self)],
                 "global_step": global_step,
-                "output": output.detach().clone().cpu()
+                "output": output.clone().detach().cpu()
             }
             batch_queue.put(item)
 
@@ -216,7 +222,7 @@ def main(args):
                     "input_grid": batch[:15].clone().detach().cpu(),
                     "output_grid": target[:15].clone().detach().cpu(),
                     "embeddings": embeddings.clone(),
-                    "label_imgs": torch.unsqueeze(label_imgs[:, 0].clone(), 1),
+                    "label_imgs": torch.unsqueeze(label_imgs[:, 0], 1).clone(),
                     "running_loss_avg": running_loss.avg.clone().cpu(),
                     "running_gradients_avgs": {},
                     "global_step": global_step
