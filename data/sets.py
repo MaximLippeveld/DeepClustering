@@ -69,8 +69,8 @@ class LMDBDataset(Dataset):
         width, height, image, mask = pickle.loads(byteflow)
 
         image = np.multiply(
-            np.float32(image),
-            np.float32(mask)
+            np.float32(image[self.channels, ...]),
+            np.float32(mask[self.channels, ...])
         )
 
         if width > size or height > size:
