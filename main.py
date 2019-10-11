@@ -7,6 +7,7 @@ import os
 import importlib
 from pathlib import Path
 import shutil
+import json
 
 def parse_file_arg(arg):
     if arg == "fmnist":
@@ -115,6 +116,13 @@ def main():
     torch.manual_seed(42)
     import numpy
     numpy.random.seed(42)
+
+    cleaned_args = {}
+    for k, v in vars(args).items():
+        if k != "func":
+            cleaned_args[k] = v if not isinstance(v, Path) else str(v)
+    with open(os.path.join(args.output, "args.json"), "w") as j:
+        json.dump(cleaned_args, j)
 
     args.func(args)
 

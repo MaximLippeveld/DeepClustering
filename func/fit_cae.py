@@ -157,7 +157,7 @@ def main(args):
     module_map = {}
     def activation_hook(self, input, output):
         global global_step
-        if global_step % 50 == 0:
+        if global_step % args.batch_report_frequency == 0:
             item = {
                 "name": module_map[id(self)],
                 "global_step": global_step,
