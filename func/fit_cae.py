@@ -58,6 +58,15 @@ class IASeq:
         aug = self.seq(images=np.moveaxis(np.array(x), 1, -1))
         return np.moveaxis(aug, -1, 1)
 
+class UnsupervisedFMNIST(datasets.FashionMNIST):
+    def __getitem__(self, index):
+        return super().__getitem__(index)[0]
+
+class unsqueeze:
+    def __init__(self, axis=0):
+        self.axis = axis
+    def __call__(self, x):
+        return np.expand_dims(x, self.axis)
 
 def main(args):
     logging.getLogger().setLevel(logging.DEBUG)
@@ -76,10 +85,9 @@ def main(args):
         img_shape = (len(args.channels), 90, 90)
         channel_shape = (90, 90)
     else:
-        ds = datasets.FashionMNIST("data/datasets/", train=True, download=True).data
-        channel_shape = ds.shape[1:]
-        ds = torch.unsqueeze(ds, 1)
-        img_shape = ds.shape[1:]
+        ds = UnsupervisedFMNIST("data/datasets/", train=True, download=True, transform=unsqueeze())
+        channel_shape = ds.data.shape[1:]
+        img_shape = [1] + list(channel_shape)
 
     ia_seq = iaa.Sequential([
         iaa.Affine(rotate=(-160, 160), scale=(0.5, 1.5), translate_percent=(-0.1, 0.1)),
@@ -116,6 +124,7 @@ def main(args):
         for n,p in cae.named_parameters() if p.requires_grad
     }
 
+    global global_step
     global_step = 0
     embeddings_to_save_per_epoch = 5000
     steps_per_epoch = ceil(len(ds)/args.batch_size)
@@ -125,6 +134,18 @@ def main(args):
     queue = manager.Queue()
     event = manager.Event()
     consumer = multiprocessing.Process(target=epoch_reporting, args=(args.output, queue, event), name="Epoch reporting")
+
+    # register hooks to record activations
+    writer = SummaryWriter(args.output / "tb")
+    hooks = {}
+    module_map = {}
+    def activation_hook(self, input, output):
+        global global_step
+        writer.add_histogram("activations/%s" % module_map[id(self)], output, global_step=global_step)
+    for name, module in cae.named_modules():
+        if len([_ for _ in module.children()]) == 0:
+            module_map[id(module)] = name
+            hooks[name] = module.register_forward_hook(activation_hook)
 
     try:
         consumer.start()

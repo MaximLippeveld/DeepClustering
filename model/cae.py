@@ -52,7 +52,7 @@ class ConvolutionalEncoder(nn.Module):
             nn.LeakyReLU(),
             nn.Flatten(),
             nn.Linear(embedding_input_shape, embedding_shape),
-            nn.Sigmoid()
+            nn.LeakyReLU()
         ])
 
         if dropout > 0:
@@ -98,7 +98,7 @@ class ConvolutionalDecoder(nn.Module):
         )
         
         self.linear = nn.Linear(input_shape, numpy.prod(self.shape))
-        self.nonlinearity = nn.Sigmoid()
+        self.nonlinearity = nn.LeakyReLU()
         self.layers = nn.ModuleList()
 
         self.layers.extend([
