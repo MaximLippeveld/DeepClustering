@@ -27,7 +27,7 @@ def epoch_reporting(output, queue, n_channels):
     logger.addHandler(handler)
 
     # tensorboard writer
-    writer = SummaryWriter(output / "tb")
+    writer = SummaryWriter(output / "tb/epoch")
 
     while True:
         item = queue.get()
@@ -56,7 +56,7 @@ def epoch_reporting(output, queue, n_channels):
 
 
 def batch_reporting(output, queue):
-    writer = SummaryWriter(output / "tb")
+    writer = SummaryWriter(output / "tb/batch")
     
     while True:
         item = queue.get()
