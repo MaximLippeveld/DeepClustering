@@ -73,12 +73,17 @@ def main():
 
     from torch.multiprocessing import set_start_method
     try:
-        set_start_method('fork', True)
+        import os
+        method = os.environ.get("DEBUG")
+        if method is None:
+            set_start_method('fork', True)
+        else:
+            set_start_method('spawn', True)
     except RuntimeError:
         pass
 
     # specify argument dependencies
-    if isinstance(args.data, Path) and args.data.suffix in [".h5", ".hdf5"]:
+    if isinstance(args.data, Path) and args.data.suffix in [".h5", ".hdf5", ".lmdb"]:
         if not hasattr(args, "channels"):
             raise ValueError("Channels is required.")
 
