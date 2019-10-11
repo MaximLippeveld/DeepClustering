@@ -235,3 +235,4 @@ def main(args):
         queue.put(None)
         batch_queue.put(None)
         consumer.join()
+        batch_consumer.join()
