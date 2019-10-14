@@ -188,7 +188,7 @@ def main(args):
                 "global_step": global_step,
                 "output": output.clone().detach().cpu()
             }
-            # batch_queue.put(item)
+            batch_queue.put(item)
 
     for name, module in cae.named_modules():
         if len([_ for _ in module.children()]) == 0:
@@ -204,11 +204,10 @@ def main(args):
         this_process = psutil.Process()
 
         with torch.autograd.detect_anomaly():
+            embeddings = torch.empty((embeddings_to_save_per_epoch, args.embedding_size), dtype=np.float)
+            label_imgs = torch.empty(tuple([embeddings_to_save_per_epoch] + list(img_shape)), dtype=np.float)
+            
             for epoch in tqdm(range(args.epochs)):
-                # iterate over data
-
-                embeddings = torch.empty((embeddings_to_save_per_epoch, args.embedding_size), dtype=np.float)
-                label_imgs = torch.empty(tuple([embeddings_to_save_per_epoch] + list(img_shape)), dtype=np.float)
                 for b_i, batch in enumerate(tqdm(loader_aug, leave=False)):
                     global_step += 1
                     opt.zero_grad()
@@ -256,7 +255,7 @@ def main(args):
                 for n, rg in running_gradients.items():
                     item["running_gradients_avgs"][n] = rg.avg.clone().cpu()
 
-                # queue.put(item)
+                queue.put(item)
                 
                 running_loss.reset()
                 for k, v in running_gradients.items():
