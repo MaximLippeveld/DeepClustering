@@ -28,12 +28,7 @@ def reporting(output, queue):
             break
 
         func, args = item
-        if isinstance(args, Iterable):
-            f = getattr(writer, func)
-            for a in args:
-                f(*a)
-        else:
-            getattr(writer, func)(*args)
+        getattr(writer, func)(*args)
     
     writer.close()
 
@@ -103,11 +98,6 @@ def main(args):
 
     # get model, optimizer, loss
     cae = model.cae.ConvolutionalAutoEncoder(img_shape, args.embedding_size, args.dropout)
-    if args.cuda:
-        cae.cuda()
-
-    opt = torch.optim.Adam(cae.parameters())
-
     logger.info("Trainable model parameters: %d" % sum(p.numel() for p in cae.parameters() if p.requires_grad))
 
     running_loss = util.metrics.AverageMeter("loss", (1,), cuda=args.cuda)
@@ -127,6 +117,10 @@ def main(args):
     consumer = multiprocessing.Process(target=reporting, args=(args.output, queue), name="Reporting")
     
     queue.put(("add_graph", (cae, next(iter(loader_aug)))))
+    if args.cuda:
+        cae.cuda()
+    opt = torch.optim.Adam(cae.parameters())
+    
     def activation_hook(self, input, output):
         global global_step
         if global_step % args.batch_report_frequency == 0:
@@ -178,10 +172,15 @@ def main(args):
                     
                     opt.step()
 
-                    queue.put(("add_scalar", ("memory/consumer", c_process.memory_info().rss, global_step)))
-                    queue.put(("add_scalar", ("memory/this", this_process.memory_info().rss, global_step)))
+                    queue.put((
+                        "add_scalars", 
+                        ("memory", {
+                            "consumer": c_process.memory_info().rss,
+                            "this": this_process.memory_info().rss
+                            },
+                             global_step)))
 
-                qeueu.put("add_embedding", (embeddings.clone(), torch.unsqueeze(label_imgs[:, 0], 1).clone(), global_step))
+                queue.put(("add_embedding", (embeddings.clone(), None, torch.unsqueeze(label_imgs[:, 0], 1).clone(), global_step)))
                 ig = batch[:15].clone().detach().cpu()
                 og = target[:15].clone().detach().cpu()
                 for i in range(len(args.channels)):
@@ -189,9 +188,9 @@ def main(args):
                     output_grid = utils.make_grid(torch.unsqueeze(og[:, i, ...], 1), nrow=3, normalize=True)
                     queue.put(("add_image", ("training/input.%d" % i, input_grid, global_step)))
                     queue.put(("add_image", ("training/output.%d" % i, output_grid, global_step)))
-                queue.put("add_scalar", ("training/loss", running_loss.avg.clone().cpu(), global_step))
+                queue.put(("add_scalar", ("training/loss", running_loss.avg.clone().cpu(), global_step)))
                 for n, rg in running_gradients.items():
-                    queue.put("add_histogram", ("gradients/%s" % n, rg.avg.clone().cpu(), global_step))
+                    queue.put(("add_histogram", ("gradients/%s" % n, rg.avg.clone().cpu(), global_step)))
                     rg.reset()                
                 running_loss.reset()
 
