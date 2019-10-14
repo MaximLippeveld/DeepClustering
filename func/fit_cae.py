@@ -125,15 +125,16 @@ def main(args):
         cae.cuda()
     opt = torch.optim.Adam(cae.parameters())
     
-    def activation_hook(self, input, output):
-        global global_step
-        if global_step % args.batch_report_frequency == 0:
-            queue.put(("add_histogram", ("activations/%s" % module_map[id(self)], output.detach().cpu(), global_step)))
-    module_map = {}
-    for name, module in cae.named_modules():
-        if len([_ for _ in module.children()]) == 0:
-            module_map[id(module)] = name
-            module.register_forward_hook(activation_hook)
+    # def activation_hook(self, input, output):
+    #     global global_step
+
+    #     if global_step % args.batch_report_frequency == 0:
+    #         queue.put(("add_histogram", ("activations/%s" % module_map[id(self)], torch.tensor(output).cpu(), global_step)))
+    # module_map = {}
+    # for name, module in cae.named_modules():
+    #     if len([_ for _ in module.children()]) == 0:
+    #         module_map[id(module)] = name
+    #         module.register_forward_hook(activation_hook)
 
     try:
         consumer.start()
@@ -176,20 +177,21 @@ def main(args):
                     
                     opt.step()
 
-                    # queue.put(("add_scalar", ("memory/consumer", c_process.memory_info().rss, global_step)))
-                    # queue.put(("add_scalar", ("memory/this", this_process.memory_info().rss, global_step)))
+                    queue.put(("add_scalar", ("memory/consumer", c_process.memory_info().rss, global_step)))
+                    queue.put(("add_scalar", ("memory/this", this_process.memory_info().rss, global_step)))
+                    queue.put(("add_scalar", ("memory/all", psutil.virtual_memory().used, global_step)))
 
-                # queue.put(("add_embedding", (embeddings, None, torch.unsqueeze(label_imgs[:, 0], 1), global_step)))
-                # ig = batch[:15].detach().cpu()
-                # og = target[:15].detach().cpu()
-                # for i in range(len(args.channels)):
-                    # input_grid = utils.make_grid(torch.unsqueeze(ig[:, i, ...], 1), nrow=3, normalize=True)
-                    # output_grid = utils.make_grid(torch.unsqueeze(og[:, i, ...], 1), nrow=3, normalize=True)
-                    # queue.put(("add_image", ("training/input.%d" % i, input_grid, global_step)))
-                    # queue.put(("add_image", ("training/output.%d" % i, output_grid, global_step)))
-                # queue.put(("add_scalar", ("training/loss", running_loss.avg.cpu(), global_step)))
+                queue.put(("add_embedding", (embeddings, None, torch.unsqueeze(label_imgs[:, 0], 1), global_step)))
+                ig = batch[:15].detach().cpu()
+                og = target[:15].detach().cpu()
+                for i in range(len(args.channels)):
+                    input_grid = utils.make_grid(torch.unsqueeze(ig[:, i, ...], 1), nrow=3, normalize=True)
+                    output_grid = utils.make_grid(torch.unsqueeze(og[:, i, ...], 1), nrow=3, normalize=True)
+                    queue.put(("add_image", ("training/input.%d" % i, input_grid, global_step)))
+                    queue.put(("add_image", ("training/output.%d" % i, output_grid, global_step)))
+                queue.put(("add_scalar", ("training/loss", running_loss.avg.cpu(), global_step)))
                 for n, rg in running_gradients.items():
-                    # queue.put(("add_histogram", ("gradients/%s" % n, rg.avg.cpu(), global_step)))
+                    queue.put(("add_histogram", ("gradients/%s" % n, rg.avg.cpu(), global_step)))
                     rg.reset()                
                 running_loss.reset()
 
