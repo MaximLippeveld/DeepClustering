@@ -35,6 +35,7 @@ def main():
     group_data.add_argument("--output", "-o", help="Directory for storing output.", default="tmp", type=Path)
     group_data.add_argument("--rm", help="Remove output directory if exists.", action="store_true", default=False)
     group_data.add_argument("--channels", "-c", nargs="*", type=int, help="Channel indices to be used (only if data is LMDB).")
+    group_data.add_argument("--raw-image", "-i", action="store_true", default=False, help="Whether to use non-masked image (only if data is LMDB).")
     
     subparser_augtest = subparsers.add_parser(name="augtest", parents=[parent_parser])
     subparser_augtest.set_defaults(func=augtest.main)

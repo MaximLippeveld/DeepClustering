@@ -40,7 +40,7 @@ def centerpad(width, height, image):
 
 class LMDBDataset(Dataset):
 
-    def __init__(self, db_path, channels, size, length, transform=None):
+    def __init__(self, db_path, channels, size, length, raw_image, transform=None):
         self.channels = channels
         self.db_path = db_path
         self.size = size
@@ -48,6 +48,7 @@ class LMDBDataset(Dataset):
         self.idx_bytes = int(numpy.ceil(numpy.floor(numpy.log2(self.length))/8.))
         self.env = None
         self.transform = transform
+        self.raw_image = raw_image
 
     def setup(self):
         self.env = lmdb.open(self.db_path, subdir=os.path.isdir(self.db_path),
@@ -68,10 +69,13 @@ class LMDBDataset(Dataset):
 
         width, height, image, mask = pickle.loads(byteflow)
 
-        image = np.multiply(
-            np.float32(image[self.channels, ...]),
-            np.float32(mask[self.channels, ...])
-        )
+        if not self.raw_image:
+            image = np.multiply(
+                np.float32(image[self.channels, ...]),
+                np.float32(mask[self.channels, ...])
+            )
+        else:
+            image = np.float32(image[self.channels, ...])
 
         if width > size or height > size:
             image = centercrop(size, size, image)
