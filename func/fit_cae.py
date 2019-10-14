@@ -154,31 +154,31 @@ def main(args):
     steps_per_epoch = ceil(len(ds)/args.batch_size)
     embeddings_to_save_per_step = int(embeddings_to_save_per_epoch/steps_per_epoch)
 
-    # manager = multiprocessing.Manager()
+    manager = multiprocessing.Manager()
     # queue = manager.Queue()
     # consumer = multiprocessing.Process(target=epoch_reporting, args=(args.output, queue, len(args.channels)), name="Epoch reporting")
-    # batch_queue = manager.Queue()
-    # batch_consumer = multiprocessing.Process(target=batch_reporting, args=(args.output, batch_queue), name="Batch reporting")
+    batch_queue = manager.Queue()
+    batch_consumer = multiprocessing.Process(target=batch_reporting, args=(args.output, batch_queue), name="Batch reporting")
 
-    # module_map = {}
-    # def activation_hook(self, input, output):
-    #     global global_step
-    #     if global_step % args.batch_report_frequency == 0:
-    #         item = {
-    #             "name": module_map[id(self)],
-    #             "global_step": global_step,
-    #             "output": output.clone().detach().cpu()
-    #         }
-    #         batch_queue.put(item)
+    module_map = {}
+    def activation_hook(self, input, output):
+        global global_step
+        if global_step % args.batch_report_frequency == 0:
+            item = {
+                "name": module_map[id(self)],
+                "global_step": global_step,
+                "output": output.clone().detach().cpu()
+            }
+            batch_queue.put(item)
 
-    # for name, module in cae.named_modules():
-    #     if len([_ for _ in module.children()]) == 0:
-    #         module_map[id(module)] = name
-    #         module.register_forward_hook(activation_hook)
+    for name, module in cae.named_modules():
+        if len([_ for _ in module.children()]) == 0:
+            module_map[id(module)] = name
+            module.register_forward_hook(activation_hook)
 
     try:
         # consumer.start()
-        # batch_consumer.start()
+        batch_consumer.start()
 
         with torch.autograd.detect_anomaly():
             for epoch in tqdm(range(args.epochs)):
@@ -237,10 +237,8 @@ def main(args):
                     v.reset()
 
             torch.save(cae.state_dict(), args.output / "model.pth")
-    # finally:
+    finally:
         # queue.put(None)
-        # batch_queue.put(None)
+        batch_queue.put(None)
         # consumer.join()
-        # batch_consumer.join()
-    except:
-        pass
+        batch_consumer.join()
