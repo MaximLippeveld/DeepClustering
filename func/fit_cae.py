@@ -27,11 +27,9 @@ def epoch_reporting(output, queue, n_channels):
     logger.addHandler(handler)
 
     writer = SummaryWriter(output / "tb/epoch")
-    process = psutil.Process(os.getpid())
 
     while True:
         item = queue.get()
-        logger.debug("%d - %d" % (os.getpid(), process.memory_info().rss))
         if item == None:
             break
 
@@ -55,7 +53,10 @@ def epoch_reporting(output, queue, n_channels):
 
         for n, avg in item["running_gradients_avgs"].items():
             writer.add_histogram("gradients/%s" % n, avg, global_step=global_step)
+            del avg
         del item["running_gradients_avgs"]
+
+        del item
 
         logger.debug("finish")
 
@@ -63,7 +64,6 @@ def epoch_reporting(output, queue, n_channels):
 
 
 def batch_reporting(output, queue):
-    process = psutil.Process(os.getpid())
     logger = logging.getLogger("batch_reporting")
     logger.setLevel(logging.DEBUG)
     logger.propagate = False
@@ -75,7 +75,6 @@ def batch_reporting(output, queue):
     
     while True:
         item = queue.get()
-        logger.debug("%d - %d" % (os.getpid(), process.memory_info().rss))
         if item == None:
             break
 
@@ -83,6 +82,7 @@ def batch_reporting(output, queue):
 
         writer.add_histogram("activations/%s" % item["name"], item["output"], global_step=global_step)
         del item["output"]
+        del item
 
 class IASeq:
     def __init__(self, seq):
@@ -188,7 +188,7 @@ def main(args):
                 "global_step": global_step,
                 "output": output.clone().detach().cpu()
             }
-            batch_queue.put(item)
+            # batch_queue.put(item)
 
     for name, module in cae.named_modules():
         if len([_ for _ in module.children()]) == 0:
