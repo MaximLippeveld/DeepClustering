@@ -17,72 +17,26 @@ import imgaug as ia
 import imgaug.augmenters as iaa
 import os
 import psutil
+from collections.abc import Iterable
 
-def epoch_reporting(output, queue, n_channels):
-    logger = logging.getLogger("epoch_reporting")
-    logger.setLevel(logging.DEBUG)
-    logger.propagate = False
-    handler = logging.FileHandler("epoch_reporting.log", mode="w")
-    handler.setLevel(logging.DEBUG)
-    logger.addHandler(handler)
-
-    writer = SummaryWriter(output / "tb/epoch")
+def reporting(output, queue):
+    writer = SummaryWriter(output / "tb/rep")
 
     while True:
         item = queue.get()
         if item == None:
             break
 
-        global_step = item["global_step"]
-
-        for i in range(n_channels):
-            input_grid = utils.make_grid(torch.unsqueeze(item["input_grid"][:, i, ...], 1), nrow=3, normalize=True)
-            output_grid = utils.make_grid(torch.unsqueeze(item["output_grid"][:, i, ...], 1), nrow=3, normalize=True)
-            
-            writer.add_image("training/input.%d" % i, input_grid, global_step=global_step)
-            writer.add_image("training/output.%d" % i, output_grid, global_step=global_step)
-        del item["input_grid"]
-        del item["output_grid"]
-
-        writer.add_embedding(item["embeddings"], label_img=item["label_imgs"], global_step=global_step)
-        del item["embeddings"]
-        del item["label_imgs"]
-
-        writer.add_scalar("training/loss", item["running_loss_avg"], global_step=global_step)
-        del item["running_loss_avg"]
-
-        for n, avg in item["running_gradients_avgs"].items():
-            writer.add_histogram("gradients/%s" % n, avg, global_step=global_step)
-            del avg
-        del item["running_gradients_avgs"]
-
-        del item
-
-        logger.debug("finish")
-
+        func, args = item
+        if isinstance(args, Iterable):
+            f = getattr(writer, func)
+            for a in args:
+                f(*a)
+        else:
+            getattr(writer, func)(*args)
+    
     writer.close()
 
-
-def batch_reporting(output, queue):
-    logger = logging.getLogger("batch_reporting")
-    logger.setLevel(logging.DEBUG)
-    logger.propagate = False
-    handler = logging.FileHandler("batch_reporting.log", mode="w")
-    handler.setLevel(logging.DEBUG)
-    logger.addHandler(handler)
-    
-    writer = SummaryWriter(output / "tb/batch")
-    
-    while True:
-        item = queue.get()
-        if item == None:
-            break
-
-        global_step = item["global_step"]
-
-        writer.add_histogram("activations/%s" % item["name"], item["output"], global_step=global_step)
-        del item["output"]
-        del item
 
 class IASeq:
     def __init__(self, seq):
@@ -109,8 +63,6 @@ def main(args):
     handler = logging.FileHandler("root.log", mode="w")
     handler.setLevel(logging.DEBUG)
     logger.addHandler(handler)
-
-    writer = SummaryWriter(args.output / "tb/root")
 
     # prepare data
     if isinstance(args.data, Path):
@@ -153,12 +105,11 @@ def main(args):
     cae = model.cae.ConvolutionalAutoEncoder(img_shape, args.embedding_size, args.dropout)
     if args.cuda:
         cae.cuda()
-    # writer.add_graph(cae, next(iter(loader_aug)))
+
     opt = torch.optim.Adam(cae.parameters())
 
     logger.info("Trainable model parameters: %d" % sum(p.numel() for p in cae.parameters() if p.requires_grad))
 
-    # training loop
     running_loss = util.metrics.AverageMeter("loss", (1,), cuda=args.cuda)
     running_gradients = {
         n: util.metrics.AverageMeter(n, cuda=args.cuda)
@@ -173,23 +124,14 @@ def main(args):
 
     manager = multiprocessing.Manager()
     queue = manager.Queue()
-    consumer = multiprocessing.Process(target=epoch_reporting, args=(args.output, queue, len(args.channels)), name="Epoch reporting")
-    batch_queue = manager.Queue()
-    batch_consumer = multiprocessing.Process(target=batch_reporting, args=(args.output, batch_queue), name="Batch reporting")
+    consumer = multiprocessing.Process(target=reporting, args=(args.output, queue), name="Reporting")
     
-    process = psutil.Process(os.getpid())
-
-    module_map = {}
+    queue.put(("add_graph", (cae, next(iter(loader_aug)))))
     def activation_hook(self, input, output):
         global global_step
         if global_step % args.batch_report_frequency == 0:
-            item = {
-                "name": module_map[id(self)],
-                "global_step": global_step,
-                "output": output.clone().detach().cpu()
-            }
-            # batch_queue.put(item)
-
+            queue.put(("add_histogram", ("activations/%s" % module_map[id(self)], output.clone().detach().cpu(), global_step)))
+    module_map = {}
     for name, module in cae.named_modules():
         if len([_ for _ in module.children()]) == 0:
             module_map[id(module)] = name
@@ -197,10 +139,7 @@ def main(args):
 
     try:
         consumer.start()
-        batch_consumer.start()
-
         c_process = psutil.Process(consumer.pid)
-        bc_process = psutil.Process(batch_consumer.pid)
         this_process = psutil.Process()
 
         with torch.autograd.detect_anomaly():
@@ -239,31 +178,24 @@ def main(args):
                     
                     opt.step()
 
-                    writer.add_scalar("memory/consumer", c_process.memory_info().rss, global_step) 
-                    writer.add_scalar("memory/batch_consumer", bc_process.memory_info().rss, global_step) 
-                    writer.add_scalar("memory/this", this_process.memory_info().rss, global_step) 
+                    queue.put(("add_scalar", ("memory/consumer", c_process.memory_info().rss, global_step)))
+                    queue.put(("add_scalar", ("memory/this", this_process.memory_info().rss, global_step)))
 
-                item = {
-                    "input_grid": batch[:15].clone().detach().cpu(),
-                    "output_grid": target[:15].clone().detach().cpu(),
-                    "embeddings": embeddings.clone(),
-                    "label_imgs": torch.unsqueeze(label_imgs[:, 0], 1).clone(),
-                    "running_loss_avg": running_loss.avg.clone().cpu(),
-                    "running_gradients_avgs": {},
-                    "global_step": global_step
-                }
+                qeueu.put("add_embedding", (embeddings.clone(), torch.unsqueeze(label_imgs[:, 0], 1).clone(), global_step))
+                ig = batch[:15].clone().detach().cpu()
+                og = target[:15].clone().detach().cpu()
+                for i in range(len(args.channels)):
+                    input_grid = utils.make_grid(torch.unsqueeze(ig[:, i, ...], 1), nrow=3, normalize=True)
+                    output_grid = utils.make_grid(torch.unsqueeze(og[:, i, ...], 1), nrow=3, normalize=True)
+                    queue.put(("add_image", ("training/input.%d" % i, input_grid, global_step)))
+                    queue.put(("add_image", ("training/output.%d" % i, output_grid, global_step)))
+                queue.put("add_scalar", ("training/loss", running_loss.avg.clone().cpu(), global_step))
                 for n, rg in running_gradients.items():
-                    item["running_gradients_avgs"][n] = rg.avg.clone().cpu()
-
-                queue.put(item)
-                
+                    queue.put("add_histogram", ("gradients/%s" % n, rg.avg.clone().cpu(), global_step))
+                    rg.reset()                
                 running_loss.reset()
-                for k, v in running_gradients.items():
-                    v.reset()
 
             torch.save(cae.state_dict(), args.output / "model.pth")
     finally:
         queue.put(None)
-        batch_queue.put(None)
         consumer.join()
-        batch_consumer.join()
