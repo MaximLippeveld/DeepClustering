@@ -154,31 +154,31 @@ def main(args):
     steps_per_epoch = ceil(len(ds)/args.batch_size)
     embeddings_to_save_per_step = int(embeddings_to_save_per_epoch/steps_per_epoch)
 
-    manager = multiprocessing.Manager()
-    queue = manager.Queue()
-    consumer = multiprocessing.Process(target=epoch_reporting, args=(args.output, queue, len(args.channels)), name="Epoch reporting")
-    batch_queue = manager.Queue()
-    batch_consumer = multiprocessing.Process(target=batch_reporting, args=(args.output, batch_queue), name="Batch reporting")
+    # manager = multiprocessing.Manager()
+    # queue = manager.Queue()
+    # consumer = multiprocessing.Process(target=epoch_reporting, args=(args.output, queue, len(args.channels)), name="Epoch reporting")
+    # batch_queue = manager.Queue()
+    # batch_consumer = multiprocessing.Process(target=batch_reporting, args=(args.output, batch_queue), name="Batch reporting")
 
-    module_map = {}
-    def activation_hook(self, input, output):
-        global global_step
-        if global_step % args.batch_report_frequency == 0:
-            item = {
-                "name": module_map[id(self)],
-                "global_step": global_step,
-                "output": output.clone().detach().cpu()
-            }
-            batch_queue.put(item)
+    # module_map = {}
+    # def activation_hook(self, input, output):
+    #     global global_step
+    #     if global_step % args.batch_report_frequency == 0:
+    #         item = {
+    #             "name": module_map[id(self)],
+    #             "global_step": global_step,
+    #             "output": output.clone().detach().cpu()
+    #         }
+    #         batch_queue.put(item)
 
-    for name, module in cae.named_modules():
-        if len([_ for _ in module.children()]) == 0:
-            module_map[id(module)] = name
-            module.register_forward_hook(activation_hook)
+    # for name, module in cae.named_modules():
+    #     if len([_ for _ in module.children()]) == 0:
+    #         module_map[id(module)] = name
+    #         module.register_forward_hook(activation_hook)
 
     try:
-        consumer.start()
-        batch_consumer.start()
+        # consumer.start()
+        # batch_consumer.start()
 
         with torch.autograd.detect_anomaly():
             for epoch in tqdm(range(args.epochs)):
@@ -218,27 +218,29 @@ def main(args):
                     opt.step()
 
                 # reporting
-                item = {
-                    "input_grid": batch[:15].clone().detach().cpu(),
-                    "output_grid": target[:15].clone().detach().cpu(),
-                    "embeddings": embeddings.clone(),
-                    "label_imgs": torch.unsqueeze(label_imgs[:, 0], 1).clone(),
-                    "running_loss_avg": running_loss.avg.clone().cpu(),
-                    "running_gradients_avgs": {},
-                    "global_step": global_step
-                }
-                for n, rg in running_gradients.items():
-                    item["running_gradients_avgs"][n] = rg.avg.clone().cpu()
+                # item = {
+                #     "input_grid": batch[:15].clone().detach().cpu(),
+                #     "output_grid": target[:15].clone().detach().cpu(),
+                #     "embeddings": embeddings.clone(),
+                #     "label_imgs": torch.unsqueeze(label_imgs[:, 0], 1).clone(),
+                #     "running_loss_avg": running_loss.avg.clone().cpu(),
+                #     "running_gradients_avgs": {},
+                #     "global_step": global_step
+                # }
+                # for n, rg in running_gradients.items():
+                #     item["running_gradients_avgs"][n] = rg.avg.clone().cpu()
 
-                queue.put(item)
+                # queue.put(item)
                 
                 running_loss.reset()
                 for k, v in running_gradients.items():
                     v.reset()
 
             torch.save(cae.state_dict(), args.output / "model.pth")
-    finally:
-        queue.put(None)
-        batch_queue.put(None)
-        consumer.join()
-        batch_consumer.join()
+    # finally:
+        # queue.put(None)
+        # batch_queue.put(None)
+        # consumer.join()
+        # batch_consumer.join()
+    except:
+        pass
