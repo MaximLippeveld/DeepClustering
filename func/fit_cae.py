@@ -30,6 +30,9 @@ def reporting(output, queue):
 
         func, args = item
         getattr(writer, func)(*args)
+
+        for arg in args:
+            del arg
     
     writer.close()
 
@@ -176,17 +179,17 @@ def main(args):
                     queue.put(("add_scalar", ("memory/consumer", c_process.memory_info().rss, global_step)))
                     queue.put(("add_scalar", ("memory/this", this_process.memory_info().rss, global_step)))
 
-                queue.put(("add_embedding", (embeddings.numpy(), None, torch.unsqueeze(label_imgs[:, 0].cpu(), 1), global_step)))
+                queue.put(("add_embedding", (embeddings, None, torch.unsqueeze(label_imgs[:, 0], 1), global_step)))
                 ig = batch[:15].detach().cpu()
                 og = target[:15].detach().cpu()
                 for i in range(len(args.channels)):
                     input_grid = utils.make_grid(torch.unsqueeze(ig[:, i, ...], 1), nrow=3, normalize=True)
                     output_grid = utils.make_grid(torch.unsqueeze(og[:, i, ...], 1), nrow=3, normalize=True)
-                    queue.put(("add_image", ("training/input.%d" % i, input_grid.numpy(), global_step)))
-                    queue.put(("add_image", ("training/output.%d" % i, output_grid.numpy(), global_step)))
-                queue.put(("add_scalar", ("training/loss", running_loss.avg.cpu().numpy(), global_step)))
+                    queue.put(("add_image", ("training/input.%d" % i, input_grid, global_step)))
+                    queue.put(("add_image", ("training/output.%d" % i, output_grid, global_step)))
+                queue.put(("add_scalar", ("training/loss", running_loss.avg.cpu(), global_step)))
                 for n, rg in running_gradients.items():
-                    queue.put(("add_histogram", ("gradients/%s" % n, rg.avg.cpu().numpy(), global_step)))
+                    queue.put(("add_histogram", ("gradients/%s" % n, rg.avg.cpu(), global_step)))
                     rg.reset()                
                 running_loss.reset()
 
