@@ -15,22 +15,23 @@ import time
 from torch import multiprocessing
 import imgaug as ia
 import imgaug.augmenters as iaa
-
-multiprocessing.set_start_method('spawn', True)
+import os
+import psutil
 
 def epoch_reporting(output, queue, n_channels):
     logger = logging.getLogger("epoch_reporting")
     logger.setLevel(logging.DEBUG)
     logger.propagate = False
     handler = logging.FileHandler("epoch_reporting.log", mode="w")
-    handler.setLevel(logging.INFO)
+    handler.setLevel(logging.DEBUG)
     logger.addHandler(handler)
 
-    # tensorboard writer
     writer = SummaryWriter(output / "tb/epoch")
+    process = psutil.Process(os.getpid())
 
     while True:
         item = queue.get()
+        logger.debug("%d - %d" % (os.getpid(), process.memory_info().rss))
         if item == None:
             break
 
@@ -62,10 +63,19 @@ def epoch_reporting(output, queue, n_channels):
 
 
 def batch_reporting(output, queue):
+    process = psutil.Process(os.getpid())
+    logger = logging.getLogger("batch_reporting")
+    logger.setLevel(logging.DEBUG)
+    logger.propagate = False
+    handler = logging.FileHandler("batch_reporting.log", mode="w")
+    handler.setLevel(logging.DEBUG)
+    logger.addHandler(handler)
+    
     writer = SummaryWriter(output / "tb/batch")
     
     while True:
         item = queue.get()
+        logger.debug("%d - %d" % (os.getpid(), process.memory_info().rss))
         if item == None:
             break
 
@@ -93,7 +103,14 @@ class unsqueeze:
         return np.expand_dims(x, self.axis)
 
 def main(args):
-    logging.getLogger().setLevel(logging.DEBUG)
+    logger = logging.getLogger("root")
+    logger.setLevel(logging.DEBUG)
+    logger.propagate = False
+    handler = logging.FileHandler("root.log", mode="w")
+    handler.setLevel(logging.DEBUG)
+    logger.addHandler(handler)
+
+    writer = SummaryWriter(args.output / "tb/root")
 
     # prepare data
     if isinstance(args.data, Path):
@@ -139,7 +156,7 @@ def main(args):
     # writer.add_graph(cae, next(iter(loader_aug)))
     opt = torch.optim.Adam(cae.parameters())
 
-    logging.info("Trainable model parameters: %d" % sum(p.numel() for p in cae.parameters() if p.requires_grad))
+    logger.info("Trainable model parameters: %d" % sum(p.numel() for p in cae.parameters() if p.requires_grad))
 
     # training loop
     running_loss = util.metrics.AverageMeter("loss", (1,), cuda=args.cuda)
@@ -155,10 +172,12 @@ def main(args):
     embeddings_to_save_per_step = int(embeddings_to_save_per_epoch/steps_per_epoch)
 
     manager = multiprocessing.Manager()
-    # queue = manager.Queue()
-    # consumer = multiprocessing.Process(target=epoch_reporting, args=(args.output, queue, len(args.channels)), name="Epoch reporting")
+    queue = manager.Queue()
+    consumer = multiprocessing.Process(target=epoch_reporting, args=(args.output, queue, len(args.channels)), name="Epoch reporting")
     batch_queue = manager.Queue()
     batch_consumer = multiprocessing.Process(target=batch_reporting, args=(args.output, batch_queue), name="Batch reporting")
+    
+    process = psutil.Process(os.getpid())
 
     module_map = {}
     def activation_hook(self, input, output):
@@ -169,7 +188,7 @@ def main(args):
                 "global_step": global_step,
                 "output": output.clone().detach().cpu()
             }
-            batch_queue.put(item)
+            # batch_queue.put(item)
 
     for name, module in cae.named_modules():
         if len([_ for _ in module.children()]) == 0:
@@ -177,8 +196,12 @@ def main(args):
             module.register_forward_hook(activation_hook)
 
     try:
-        # consumer.start()
+        consumer.start()
         batch_consumer.start()
+
+        c_process = psutil.Process(consumer.pid)
+        bc_process = psutil.Process(batch_consumer.pid)
+        this_process = psutil.Process()
 
         with torch.autograd.detect_anomaly():
             for epoch in tqdm(range(args.epochs)):
@@ -217,18 +240,21 @@ def main(args):
                     
                     opt.step()
 
-                # reporting
-                # item = {
-                #     "input_grid": batch[:15].clone().detach().cpu(),
-                #     "output_grid": target[:15].clone().detach().cpu(),
-                #     "embeddings": embeddings.clone(),
-                #     "label_imgs": torch.unsqueeze(label_imgs[:, 0], 1).clone(),
-                #     "running_loss_avg": running_loss.avg.clone().cpu(),
-                #     "running_gradients_avgs": {},
-                #     "global_step": global_step
-                # }
-                # for n, rg in running_gradients.items():
-                #     item["running_gradients_avgs"][n] = rg.avg.clone().cpu()
+                    writer.add_scalar("memory/consumer", c_process.memory_info().rss, global_step) 
+                    writer.add_scalar("memory/batch_consumer", bc_process.memory_info().rss, global_step) 
+                    writer.add_scalar("memory/this", this_process.memory_info().rss, global_step) 
+
+                item = {
+                    "input_grid": batch[:15].clone().detach().cpu(),
+                    "output_grid": target[:15].clone().detach().cpu(),
+                    "embeddings": embeddings.clone(),
+                    "label_imgs": torch.unsqueeze(label_imgs[:, 0], 1).clone(),
+                    "running_loss_avg": running_loss.avg.clone().cpu(),
+                    "running_gradients_avgs": {},
+                    "global_step": global_step
+                }
+                for n, rg in running_gradients.items():
+                    item["running_gradients_avgs"][n] = rg.avg.clone().cpu()
 
                 # queue.put(item)
                 
@@ -238,7 +264,7 @@ def main(args):
 
             torch.save(cae.state_dict(), args.output / "model.pth")
     finally:
-        # queue.put(None)
+        queue.put(None)
         batch_queue.put(None)
-        # consumer.join()
+        consumer.join()
         batch_consumer.join()

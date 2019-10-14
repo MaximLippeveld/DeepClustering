@@ -87,6 +87,8 @@ def main():
     if isinstance(args.data, Path) and args.data.suffix in [".h5", ".hdf5", ".lmdb"]:
         if not hasattr(args, "channels"):
             raise ValueError("Channels is required.")
+    if isinstance(args.data, str):
+        vars(args)["channels"] = [0]
 
     # process file arguments
     l = [args.data]
