@@ -122,7 +122,7 @@ def main(args):
         with env.begin(write=False) as txn:
             length = int.from_bytes(txn.get(b'__len__'), "big")
 
-        ds = data.sets.LMDBDataset(str(args.data), args.channels, 90, length, None)
+        ds = data.sets.LMDBDataset(str(args.data), args.channels, 90, length, args.raw_image)
         img_shape = (len(args.channels), 90, 90)
         channel_shape = (90, 90)
     else:
