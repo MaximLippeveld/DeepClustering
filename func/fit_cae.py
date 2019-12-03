@@ -64,16 +64,8 @@ def main(args):
     logger.addHandler(handler)
 
     # prepare data
-    if isinstance(args.data, Path):
-        import lmdb
-
-        env = lmdb.open(str(args.data), subdir=args.data.is_dir(),
-                             readonly=True, lock=False,
-                             readahead=False, meminit=False)
-        with env.begin(write=False) as txn:
-            length = int.from_bytes(txn.get(b'__len__'), "big")
-
-        ds = data.sets.LMDBDataset(str(args.data), args.channels, 90, length, args.raw_image)
+    if isinstance(args.data, list):
+        ds = data.sets.LMDBDataset(args.data, args.channels, 90, args.raw_image)
         img_shape = (len(args.channels), 90, 90)
         channel_shape = (90, 90)
     else:

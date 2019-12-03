@@ -4,13 +4,12 @@ from torchvision import transforms
 from torchvision.transforms import functional
 import numpy
 import numpy as np
-import lmdb
 import os.path
-import h5py
-import h5pickle
 import pickle
 import math
 from math import ceil, floor
+from cifconvert.lmdb import ciflmdb
+import logging
 
 
 def centercrop(width, height, image):
@@ -40,43 +39,50 @@ def centerpad(width, height, image):
 
 class LMDBDataset(Dataset):
 
-    def __init__(self, db_path, channels, size, length, raw_image, transform=None):
+    def __init__(self, db_paths, channels, size, raw_image, transform=None):
+        self.db_paths = db_paths
         self.channels = channels
-        self.db_path = db_path
         self.size = size
-        self.length = length
-        self.idx_bytes = int(numpy.ceil(numpy.floor(numpy.log2(self.length))/8.))
-        self.env = None
         self.transform = transform
         self.raw_image = raw_image
+        self.dbs = []
+        self.db_start_index = []
+        
+        self.length = 0
+        for db_path in self.db_paths:
+            self.length += len(ciflmdb(db_path))
 
     def setup(self):
-        self.env = lmdb.open(self.db_path, subdir=os.path.isdir(self.db_path),
-                             readonly=True, lock=False,
-                             readahead=False, meminit=False)
+        i = 0
+        for db_path in self.db_paths:
+            db = ciflmdb(db_path)
+            db.set_channels_of_interest(self.channels)
+
+            self.dbs.append(db)
+            self.db_start_index.append(i)
+            
+            i += len(db)
+
+        self.db_start_index = np.array(self.db_start_index)
 
     def __getitem__(self, index):
-        if self.env is None:
+        if len(self.dbs) == 0:
             self.setup()
 
-        env = self.env
-        size = self.size
-
-        idx = index.to_bytes(self.idx_bytes, "big")
-
-        with env.begin(write=False) as txn:
-            byteflow = txn.get(idx)
-
-        width, height, image, mask = pickle.loads(byteflow)
+        db_idx = sum(self.db_start_index - index <= 0)-1
+        db = self.dbs[db_idx]
+        start_idx = self.db_start_index[db_idx]
+        width, height, image, mask = db.get_image(index-start_idx, only_coi=True)
 
         if not self.raw_image:
             image = np.multiply(
-                np.float32(image[self.channels, ...]),
-                np.float32(mask[self.channels, ...])
+                np.float32(image),
+                np.float32(mask)
             )
         else:
-            image = np.float32(image[self.channels, ...])
+            image = np.float32(image)
 
+        size = self.size
         if width > size or height > size:
             image = centercrop(size, size, image)
 
@@ -93,35 +99,3 @@ class LMDBDataset(Dataset):
 
     def __repr__(self):
         return self.__class__.__name__ + ' (' + self.db_path + ')'        
-
-class HDF5Dataset(Dataset):
-
-    def __init__(self, handle, channels):
-        
-        self.handle = h5pickle.File(str(handle), "r", libver="latest", swmr=True)
-
-        self.channels = []
-        channel_fmt = "channel_%d"
-        for channel in channels:
-            if channel_fmt % channel in self.handle:
-                self.channels.append(channel_fmt % channel)
-            else:
-                raise ValueError("Channel %d not present in data-file." % channel)
-            
-        shape = list(self.handle[self.channels[0]]["images"].shape)
-        shape.insert(1, len(self.channels))
-        self.shape = tuple(shape)
-
-    def __len__(self):
-        return self.get_shape()[0]
-
-    def get_shape(self):
-        return self.shape
-
-    def __getitem__(self, idx):
-        im = numpy.array([self.handle[channel]["images"][idx] for channel in self.channels], dtype=numpy.float32)
-        im *= numpy.array([self.handle[channel]["masks"][idx] for channel in self.channels], dtype=numpy.float32)
-
-        return im
-
-    

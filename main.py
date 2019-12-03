@@ -57,7 +57,11 @@ def main():
 
     group_data = parent_parser.add_argument_group(title="data", description="Arguments related to data input.")
     group_data.add_argument("--root", "-r", help="Directory prepended to any path input. (Can be path to dir structure shared accross environments.)", type=parse_file_arg)
-    group_data.add_argument("--data", "-d", help="File containing input images or 'fmnist'.", required=True, type=parse_file_arg)
+
+    data_group = group_data.add_mutually_exclusive_group(required=True)
+    data_group.add_argument("--data", "-d", help="File containing input images, or 'fmnist'.", default=None, type=str)
+    data_group.add_argument("--glob", "-g", help="Glob expression to select filed containing input images.", default=None, type=str)
+
     group_data.add_argument("--output", "-o", help="Directory for storing output.", default="tmp", type=Path)
     group_data.add_argument("--rm", help="Remove output directory if exists.", action="store_true", default=False)
     group_data.add_argument("--channels", "-c", nargs="*", type=int, help="Channel indices to be used (only if data is LMDB).")
@@ -103,7 +107,7 @@ def main():
     try:
         import os
         method = os.environ.get("DEBUG")
-        if method is None:
+        if os.environ.get("OS") != "Windows_NT" and method is None:
             set_start_method('fork', True)
         else:
             set_start_method('spawn', True)
@@ -118,21 +122,35 @@ def main():
         vars(args)["channels"] = [0]
 
     # process file arguments
-    l = [args.data]
-    if "pretrained_model" in vars(args):
-        l += [args.pretrained_model]
 
-    for p in l:
-        if isinstance(p, Path):
-            if not p.exists():
-                if args.root is not None and args.root.exists():
-                    if (p / args.root).exists():
-                        p /= args.root
-                    else:
-                        raise ValueError("Concatenation of root and %s does not exist." % p)
-                else:
-                    raise ValueError("%s does not exist and root does not exist." % p)
-    
+    ## data
+    if args.root is not None and args.root.exists():
+        # prepend root
+        if "pretrained_model" in args and args.pretrained_model is not None:
+            args.pretrained_model = args.root / args.pretrained_model
+            if not args.pretrained_model.exists():
+                raise ValueError("Pretrained model cannot be found.")
+
+        if args.data is not None:
+            data = [args.root / Path(args.data)]
+        else:
+            data = [f for f in Path(args.root).glob(args.glob)]
+    elif args.root is not None and not args.root.exists():
+        raise ValueError(args.root, "Cannot find root directory.")
+    else:
+        if args.data is not None:
+            data = [Path(args.data)]
+        else:
+            data = [f for f in Path(".").glob(args.glob)]
+
+    if len(data) == 0:
+        raise ValueError("Input files(s) not found.")
+    for f in data:
+        if not f.exists():
+            raise ValueError("Data file does not exists.")
+
+    vars(args)["data"] = [str(d) for d in data]
+
     # process outputdir arg
     if args.output.exists():
         if args.output == Path("tmp") or args.rm:
