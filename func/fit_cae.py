@@ -82,7 +82,7 @@ def main(args):
     augs = [
         IASeq(ia_seq),
         torch.Tensor,
-        data.transformers.MinMax(),
+        data.transformers.StandardScale(),
     ]
     augmenter = transforms.Compose(augs)
 
