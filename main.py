@@ -8,12 +8,37 @@ import importlib
 from pathlib import Path
 import shutil
 import json
+import torch
+import numpy
+import torch.multiprocessing
+import sys
+from tensorboard import default, program
+import logging
+
 
 def parse_file_arg(arg):
     if arg == "fmnist":
         return arg
     else:
         return Path(arg)
+
+
+class TensorBoardProcess(torch.multiprocessing.Process):
+
+    def __init__(self, output, port=6006):
+        super(TensorBoardProcess, self).__init__()
+        self.output = output
+        self.port = port
+
+    def run(self):
+        tb = program.TensorBoard(
+            default.get_plugins() + default.get_dynamic_plugins(), 
+            program.get_default_assets_zip_provider())
+        tb.configure(logdir = str(self.output / "tb"), port = self.port)
+        log = logging.getLogger('tensorflow')
+        log.setLevel(logging.CRITICAL)
+        tb.main()
+
 
 def main():
     """
@@ -28,6 +53,7 @@ def main():
     group_meta.add_argument("--cuda", "-u", action="store_true", help="Use cuda")
     group_meta.add_argument("--batch-report-frequency", default=50, type=int)
     group_meta.add_argument("--workers", "-w", default=0, type=int)
+    group_meta.add_argument("--launch-tb", "-tb", default=False, action='store_true')
 
     group_data = parent_parser.add_argument_group(title="data", description="Arguments related to data input.")
     group_data.add_argument("--root", "-r", help="Directory prepended to any path input. (Can be path to dir structure shared accross environments.)", type=parse_file_arg)
@@ -35,7 +61,7 @@ def main():
     group_data.add_argument("--output", "-o", help="Directory for storing output.", default="tmp", type=Path)
     group_data.add_argument("--rm", help="Remove output directory if exists.", action="store_true", default=False)
     group_data.add_argument("--channels", "-c", nargs="*", type=int, help="Channel indices to be used (only if data is LMDB).")
-    group_data.add_argument("--raw-image", "-i", action="store_true", default=False, help="Whether to use non-masked image (only if data is LMDB).")
+    group_data.add_argument("--raw-image", "-ri", action="store_true", default=False, help="Whether to use non-masked image (only if data is LMDB).")
     
     subparser_augtest = subparsers.add_parser(name="augtest", parents=[parent_parser])
     subparser_augtest.set_defaults(func=augtest.main)
@@ -47,8 +73,8 @@ def main():
     
     group_model_fit = parser_model.add_argument_group(title="fit", description="Arguments related to model fitting")
     group_model_fit.add_argument("--epochs", "-e", help="Number of epochs", default=100, type=int)
-    group_model_fit.add_argument("--batch-size", "-b", type=int, help="Batch size.", default=256)
-    group_model_fit.add_argument("--embedding-size", "-s", type=int, help="Embedding size.", default=10)
+    group_model_fit.add_argument("--batch-size", "-bs", type=int, help="Batch size.", default=256)
+    group_model_fit.add_argument("--embedding-size", "-es", type=int, help="Embedding size.", default=10)
 
     subparser_dae = subparsers.add_parser(name="DAE", parents=[parser_model])
     subparser_dae.set_defaults(func=fit_dae.main)
@@ -114,10 +140,13 @@ def main():
 
     args.output.mkdir()
 
-    # set seeds
-    import torch
+    # launch tb
+    if args.launch_tb:
+        tb_process = TensorBoardProcess(args.output)
+        tb_process.daemon = True
+        tb_process.start()
+
     torch.manual_seed(42)
-    import numpy
     numpy.random.seed(42)
 
     cleaned_args = {}
