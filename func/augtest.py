@@ -1,7 +1,7 @@
 from data import sets
 import torch
 from torch.utils.data import DataLoader
-from util.augmentation.augmentation_2d import *
+from augmentation.augmentation_2d import *
 from torchvision.transforms import Compose
 import matplotlib.pyplot as plt
 from pathlib import Path

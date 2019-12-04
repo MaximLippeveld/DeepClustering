@@ -5,7 +5,7 @@ import torch.optim, torch.autograd
 from tqdm import tqdm
 from torchvision import datasets, transforms, utils
 from pathlib import Path
-from util.augmentation.augmentation_2d import *
+from augmentation.augmentation_2d import *
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 import util.metrics
