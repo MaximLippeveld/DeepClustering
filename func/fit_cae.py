@@ -5,7 +5,7 @@ import torch.optim, torch.autograd
 from tqdm import tqdm
 from torchvision import datasets, transforms, utils
 from pathlib import Path
-from util.augmentation.augmentation_2d import *
+from augmentation.augmentation_2d import *
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 import util.metrics
@@ -64,16 +64,11 @@ def main(args):
     logger.addHandler(handler)
 
     # prepare data
-    if isinstance(args.data, Path):
-        import lmdb
+    if isinstance(args.data, list):
+        ds = data.sets.LMDBDataset(args.data, args.channels, 90, args.raw_image)
 
-        env = lmdb.open(str(args.data), subdir=args.data.is_dir(),
-                             readonly=True, lock=False,
-                             readahead=False, meminit=False)
-        with env.begin(write=False) as txn:
-            length = int.from_bytes(txn.get(b'__len__'), "big")
-
-        ds = data.sets.LMDBDataset(str(args.data), args.channels, 90, length, args.raw_image)
+        if len(args.channels) == 0:
+            args.channels = ds.channels_of_interest
         img_shape = (len(args.channels), 90, 90)
         channel_shape = (90, 90)
     else:
@@ -90,7 +85,7 @@ def main(args):
     augs = [
         IASeq(ia_seq),
         torch.Tensor,
-        data.transformers.MinMax(),
+        data.transformers.StandardScale(),
     ]
     augmenter = transforms.Compose(augs)
 
