@@ -1,102 +1,33 @@
-import data.sets, data.transformers
 import model.cae
 import torch.nn.functional as F
 import torch.optim, torch.autograd
 from tqdm import tqdm
-from torchvision import datasets, transforms, utils
+from torchvision import utils
 from pathlib import Path
-from augmentation.augmentation_2d import *
-from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
-import util.metrics
+import util.metrics, util.reporting
 import logging
 from math import ceil
 import time
 from torch import multiprocessing
-import imgaug as ia
-import imgaug.augmenters as iaa
 import os
 import psutil
 from collections.abc import Iterable
 import numpy as np
+import data.loaders
+import logging
 
-def reporting(output, queue):
-    writer = SummaryWriter(output / "tb/rep")
-
-    while True:
-        item = queue.get()
-        if item == None:
-            break
-
-        func, args = item
-        getattr(writer, func)(*args)
-
-        for arg in args:
-            del arg
-    
-    writer.close()
-
-
-class IASeq:
-    def __init__(self, seq):
-        self.seq = seq
-
-    def __call__(self, x):
-        aug = self.seq(images=np.moveaxis(np.array(x), 1, -1))
-        return np.moveaxis(aug, -1, 1)
-
-class UnsupervisedFMNIST(datasets.FashionMNIST):
-    def __getitem__(self, index):
-        return super().__getitem__(index)[0]
-
-class unsqueeze:
-    def __init__(self, axis=0):
-        self.axis = axis
-    def __call__(self, x):
-        return np.expand_dims(x, self.axis)
 
 def main(args):
-    logger = logging.getLogger("root")
-    logger.setLevel(logging.DEBUG)
-    logger.propagate = False
-    handler = logging.FileHandler("root.log", mode="w")
-    handler.setLevel(logging.DEBUG)
-    logger.addHandler(handler)
 
-    # prepare data
-    if isinstance(args.data, list):
-        ds = data.sets.LMDBDataset(args.data, args.channels, 90, args.raw_image)
+    # logger
+    logger = logging.getLogger()
 
-        if len(args.channels) == 0:
-            args.channels = ds.channels_of_interest
-        img_shape = (len(args.channels), 90, 90)
-        channel_shape = (90, 90)
-    else:
-        ds = UnsupervisedFMNIST("data/datasets/", train=True, download=True, transform=unsqueeze())
-        channel_shape = ds.data.shape[1:]
-        img_shape = [1] + list(channel_shape)
-
-    ia_seq = iaa.Sequential([
-        iaa.Affine(rotate=(-160, 160), scale=(0.5, 1.5), translate_percent=(-0.1, 0.1)),
-        iaa.HorizontalFlip(),
-        iaa.VerticalFlip()
-    ])
-
-    augs = [
-        IASeq(ia_seq),
-        torch.Tensor,
-        data.transformers.StandardScale(),
-    ]
-    augmenter = transforms.Compose(augs)
-
-    loader_aug = DataLoader(
-        ds, batch_size=args.batch_size, shuffle=True, 
-        drop_last=False, num_workers=args.workers,
-        collate_fn=augmenter
-    )
+    # data prep
+    loader_aug = data.loaders.DataLoaderWrapper(args)
 
     # get model, optimizer, loss
-    cae = model.cae.ConvolutionalAutoEncoder(img_shape, args.embedding_size, args.dropout)
+    cae = model.cae.ConvolutionalAutoEncoder(loader_aug.img_shape, args.embedding_size, args.dropout)
     logger.info("Trainable model parameters: %d" % sum(p.numel() for p in cae.parameters() if p.requires_grad))
 
     running_loss = util.metrics.AverageMeter("loss", (1,), cuda=args.cuda)
@@ -108,29 +39,18 @@ def main(args):
     global global_step
     global_step = 0
     embeddings_to_save_per_epoch = 5000
-    steps_per_epoch = ceil(len(ds)/args.batch_size)
+    steps_per_epoch = ceil(len(loader_aug.ds)/args.batch_size)
     embeddings_to_save_per_step = int(embeddings_to_save_per_epoch/steps_per_epoch)
 
     manager = multiprocessing.Manager()
     queue = manager.Queue()
-    consumer = multiprocessing.Process(target=reporting, args=(args.output, queue), name="Reporting")
+    consumer = multiprocessing.Process(target=util.reporting.target, args=(args.output, queue), name="Reporting")
     
     queue.put(("add_graph", (cae, next(iter(loader_aug)))))
     if args.cuda:
         cae.cuda()
     opt = torch.optim.Adam(cae.parameters())
     
-    # def activation_hook(self, input, output):
-    #     global global_step
-
-    #     if global_step % args.batch_report_frequency == 0:
-    #         queue.put(("add_histogram", ("activations/%s" % module_map[id(self)], torch.tensor(output).cpu(), global_step)))
-    # module_map = {}
-    # for name, module in cae.named_modules():
-    #     if len([_ for _ in module.children()]) == 0:
-    #         module_map[id(module)] = name
-    #         module.register_forward_hook(activation_hook)
-
     try:
         consumer.start()
         c_process = psutil.Process(consumer.pid)
@@ -138,7 +58,7 @@ def main(args):
 
         with torch.autograd.detect_anomaly():
             embeddings = torch.empty((embeddings_to_save_per_epoch, args.embedding_size), dtype=np.float)
-            label_imgs = torch.empty(tuple([embeddings_to_save_per_epoch] + list(img_shape)), dtype=np.float)
+            label_imgs = torch.empty(tuple([embeddings_to_save_per_epoch] + list(loader_aug.img_shape)), dtype=np.float)
             
             for epoch in tqdm(range(args.epochs)):
                 for b_i, batch in enumerate(tqdm(loader_aug, leave=False)):
