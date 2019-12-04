@@ -66,6 +66,9 @@ def main(args):
     # prepare data
     if isinstance(args.data, list):
         ds = data.sets.LMDBDataset(args.data, args.channels, 90, args.raw_image)
+
+        if len(args.channels) == 0:
+            args.channels = ds.channels_of_interest
         img_shape = (len(args.channels), 90, 90)
         channel_shape = (90, 90)
     else:

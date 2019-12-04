@@ -41,7 +41,6 @@ class LMDBDataset(Dataset):
 
     def __init__(self, db_paths, channels, size, raw_image, transform=None):
         self.db_paths = db_paths
-        self.channels = channels
         self.size = size
         self.transform = transform
         self.raw_image = raw_image
@@ -49,14 +48,25 @@ class LMDBDataset(Dataset):
         self.db_start_index = []
         
         self.length = 0
+        tmp_channels = []
         for db_path in self.db_paths:
-            self.length += len(ciflmdb(db_path))
+            db = ciflmdb(db_path)
+            self.length += len(db)
+            tmp_channels.append(db.names)
+        
+        if all(len(i) == len(tmp_channels[0]) for i in tmp_channels):
+            if len(channels) > 0:
+                self.channels_of_interest = channels
+            else:
+                self.channels_of_interest = [i for i in range(len(tmp_channels[0]))]
+        else:
+            raise ValueError("Not all DBs contain the same amount of channels.")
 
     def setup(self):
         i = 0
         for db_path in self.db_paths:
             db = ciflmdb(db_path)
-            db.set_channels_of_interest(self.channels)
+            db.set_channels_of_interest(self.channels_of_interest)
 
             self.dbs.append(db)
             self.db_start_index.append(i)
