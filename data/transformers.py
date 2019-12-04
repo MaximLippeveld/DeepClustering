@@ -11,4 +11,4 @@ class StandardScale:
     def __call__(self, x):
         mean_ = torch.flatten(x, 1).mean(dim=1)
         sd_ = torch.flatten(x, 1).std(dim=1)
-        return (x.T - mean_)/sd_
+        return ((x.T - mean_)/sd_).T
