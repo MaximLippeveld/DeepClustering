@@ -49,7 +49,7 @@ def main(args):
 
     # get model, optimizer, loss
     cae = model.cae.ConvolutionalAutoEncoder(loader_aug.img_shape, args.embedding_size, args.dropout)
-    cae.load_state_dict(torch.load())
+    cae.load_state_dict(torch.load(args.model))
     logger.info("Trainable model parameters: %d" % sum(p.numel() for p in cae.parameters() if p.requires_grad))
 
     global_step = 0
