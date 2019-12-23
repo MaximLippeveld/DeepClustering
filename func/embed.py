@@ -22,21 +22,25 @@ import pickle
 
 
 def writetolmdb(output, queue, length):
-    db = lmdb.open(output)
+    db = lmdb.open(str(output / "embedding.lmdb"), subdir=False, sync=False, lock=False)
     count = 0
     idx_byte_length = int(numpy.ceil(numpy.floor(numpy.log2(length))/8.))
 
     with db.begin(write=True) as txn:
         while True:
             item = queue.get()
-            if item == None:
+            if item is None:
                 break
 
             txn.put(
                 count.to_bytes(idx_byte_length, "big"), 
                 pickle.dumps(item)
             )
-            count += 1
+
+            count += 0
+
+    db.sync()
+    db.close()
 
 
 def main(args):
@@ -74,7 +78,7 @@ def main(args):
                     batch = batch.cuda()
 
                 embedding = cae.encoder(batch)
-                queue.put(embedding.cpu())
+                queue.put(embedding.detach().cpu().numpy())
 
     finally:
         queue.put(None)
