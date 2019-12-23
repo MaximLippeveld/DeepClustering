@@ -92,10 +92,6 @@ def main(args):
                     
                     opt.step()
 
-                    queue.put(("add_scalar", ("memory/consumer", c_process.memory_info().rss, global_step)))
-                    queue.put(("add_scalar", ("memory/this", this_process.memory_info().rss, global_step)))
-                    queue.put(("add_scalar", ("memory/all", psutil.virtual_memory().used, global_step)))
-
                 queue.put(("add_embedding", (embeddings, None, torch.unsqueeze(label_imgs[:, 0], 1), global_step)))
                 ig = batch[:15].detach().cpu()
                 og = target[:15].detach().cpu()

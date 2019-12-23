@@ -1,5 +1,5 @@
 import argparse
-from func import augtest, lmdbtest
+from func import augtest, lmdbtest, embed
 from func import fit_dae, fit_cae
 from func import dyn_ae_clustering
 from func import mc_dropout_cae
@@ -72,14 +72,14 @@ def main():
     
     subparser_lmdbtest = subparsers.add_parser(name="lmdbtest", parents=[parent_parser])
     subparser_lmdbtest.set_defaults(func=lmdbtest.main)
-
+    
     parser_model = argparse.ArgumentParser(parents=[parent_parser], add_help=False)
     
     group_model_fit = parser_model.add_argument_group(title="fit", description="Arguments related to model fitting")
     group_model_fit.add_argument("--epochs", "-e", help="Number of epochs", default=100, type=int)
     group_model_fit.add_argument("--batch-size", "-bs", type=int, help="Batch size.", default=256)
     group_model_fit.add_argument("--embedding-size", "-es", type=int, help="Embedding size.", default=10)
-
+    
     subparser_dae = subparsers.add_parser(name="DAE", parents=[parser_model])
     subparser_dae.set_defaults(func=fit_dae.main)
 
@@ -93,6 +93,10 @@ def main():
     subparser_mc_cae = subparsers.add_parser(name="MC_CAE", parents=[parser_cae])
     subparser_mc_cae.add_argument("--n-stochastic", "-n", default=10, type=int)
     subparser_mc_cae.set_defaults(func=mc_dropout_cae.main)
+    
+    subparser_embed = subparsers.add_parser(name="embed", parents=[parser_cae])
+    subparser_embed.add_argument("--model", "-m", required=True, type=parse_file_arg)
+    subparser_embed.set_defaults(func=embed.main)
         
     subparser_dynAE = subparsers.add_parser(name="dynAE", parents=[parser_model])
     group_dynAE = subparser_dynAE.add_argument_group(title="dynAE specific", description="Arguments related to model fitting with fixed clusters.")
@@ -100,7 +104,7 @@ def main():
     group_dynAE.add_argument("--pretrained-model", "-p", required=True, type=parse_file_arg)
     group_dynAE.add_argument("--tolerance", "-t", default=0.0001, type=float)
     subparser_dynAE.set_defaults(func=dyn_ae_clustering.main)
-    
+
     args = parser.parse_args()
 
     from torch.multiprocessing import set_start_method

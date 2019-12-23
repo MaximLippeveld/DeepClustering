@@ -41,14 +41,16 @@ class DataLoaderWrapper(DataLoader):
             channel_shape = ds.data.shape[1:]
             img_shape = [1] + list(channel_shape)
 
-        ia_seq = iaa.Sequential([
-            iaa.Affine(rotate=(-160, 160), scale=(0.5, 1.5), translate_percent=(-0.1, 0.1)),
-            iaa.HorizontalFlip(),
-            iaa.VerticalFlip()
-        ])
+        augs = []
+        if args.func not in ["embed"]:
+            ia_seq = iaa.Sequential([
+                iaa.Affine(rotate=(-160, 160), scale=(0.5, 1.5), translate_percent=(-0.1, 0.1)),
+                iaa.HorizontalFlip(),
+                iaa.VerticalFlip()
+            ])
+            augs.append(IASeq(ia_seq))
 
-        augs = [
-            IASeq(ia_seq),
+        augs += [
             torch.Tensor,
             data.transformers.StandardScale(),
         ]
