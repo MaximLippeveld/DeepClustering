@@ -28,7 +28,7 @@ mkl-random==1.0.2
 mkl-service==2.0.2
 networkx==2.3
 numba==0.45.1
-numpy==1.16.4
+numpy==1.22.0
 olefile==0.46
 opencv-python==4.1.0.25
 opencv-python-headless==4.1.1.26
