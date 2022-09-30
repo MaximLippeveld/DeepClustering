@@ -17,7 +17,7 @@ imageio==2.5.0
 imgaug==0.3.0
 javabridge==1.0.18
 jmespath==0.9.4
-joblib==0.13.2
+joblib==1.2.0
 kiwisolver==1.1.0
 llvmlite==0.29.0
 lmdb==0.97
