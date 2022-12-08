@@ -3,7 +3,7 @@ absl-py==0.8.0
 boto3==1.10.32
 botocore==1.13.32
 cachetools==3.1.1
-certifi==2019.6.16
+certifi==2022.12.7
 cffi==1.12.3
 -e git+git@github.ugent.be:mlippeve/cifconvert.git@9786139c079530b8202a8255beb0fa5b2b6a4c9e#egg=cifconvert
 cycler==0.10.0
